@@ -373,6 +373,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
           <option value="medium" selected>medium</option>
           <option value="high">high</option>
         </select>
+        <input class="todo-input" id="todo-due-input" type="date" style="flex:0 0 140px;color:var(--text-muted)" title="due date (optional)" />
         <button class="btn-primary" onclick="addTodo()">[ add ]</button>
       </div>
       <div class="todo-filters">
@@ -388,10 +389,11 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <!-- Plans tab -->
   <div id="tab-plans" class="tab-panel">
     <div class="card">
-      <div class="card-title"><div class="card-title-left"><span class="card-icon"></span>kanban plans</div></div>
+      <div class="card-title"><div class="card-title-left"><span class="card-icon"></span>plans</div></div>
       <div class="plan-form">
         <input class="plan-input" id="plan-title-input" placeholder="plan title..." />
         <input class="plan-input" id="plan-desc-input" placeholder="description (optional)" style="flex:2" />
+        <input class="todo-input" id="plan-due-input" type="date" style="flex:0 0 140px;color:var(--text-muted);background:var(--surface2);border:1px solid var(--border);padding:8px 10px;font-family:var(--font-mono);font-size:11px;outline:none" title="due date (optional)" />
         <select class="todo-select" id="plan-col-input">
           <option value="backlog">backlog</option>
           <option value="inprogress">in progress</option>
@@ -498,7 +500,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 
 <script>
 // ── CONFIG — update this ──────────────────────────────────────
-const API_BASE = 'https://dev-dashboard-api.devsekarindhu18.workers.dev';
+const API_BASE = 'https://YOUR-WORKER.workers.dev';
 
 // ── State ─────────────────────────────────────────────────────
 let AUTH_TOKEN = '';
@@ -724,14 +726,14 @@ function renderLangs(){
 function renderRepos(){
   const top=[...repoData].sort((a,b)=>b.stargazers_count-a.stargazers_count).slice(0,6);
   document.getElementById('repo-list').innerHTML=top.map(r=>`
-    <div class="repo-item">
+    <a class="repo-item" href="${r.html_url}" target="_blank" rel="noopener" style="text-decoration:none;cursor:pointer;display:flex;align-items:flex-start;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);gap:12px;transition:background .15s;" onmouseover="this.style.background='rgba(0,255,136,0.04)'" onmouseout="this.style.background='transparent'">
       <div>
-        <div class="repo-name">${r.name}</div>
+        <div class="repo-name" style="color:var(--blue)">${r.name} ↗</div>
         <div class="repo-desc">${r.description||'no description'}</div>
         <div style="margin-top:4px;font-size:11px">${r.language?`<span class="lang-dot" style="background:${lc(r.language)}"></span>${r.language}`:''}</div>
       </div>
       <div class="repo-meta"><span class="stars">★ ${r.stargazers_count}</span><span>⑂ ${r.forks_count}</span></div>
-    </div>`).join('');
+    </a>`).join('');
 }
 
 // ── Todos ─────────────────────────────────────────────────────
@@ -745,13 +747,23 @@ function renderTodos(){
   const filtered=todoFilter==='all'?todos:todos.filter(t=>t.status===todoFilter);
   document.getElementById('todo-list').innerHTML=filtered.length===0
     ?`<div style="color:var(--text-dim);font-size:12px;padding:12px 0">no todos here</div>`
-    :filtered.map(t=>`
-    <div class="todo-item">
-      <div class="todo-check ${t.status==='done'?'checked':''}" onclick="toggleTodo(${t.id},'${t.status}')"></div>
-      <span class="todo-title ${t.status==='done'?'done':''}">${t.title}</span>
-      <span class="todo-badge badge-${t.priority}">${t.priority}</span>
-      <button class="todo-del" onclick="deleteTodo(${t.id})">×</button>
-    </div>`).join('');
+    :filtered.map(t=>{
+      const statusColors={todo:'var(--text-dim)',wip:'var(--amber)',done:'var(--green)'};
+      const nextStatus={todo:'wip',wip:'done',done:'todo'};
+      const statusLabel={todo:'TODO',wip:'WIP',done:'DONE'};
+      const due=t.due_date?new Date(t.due_date):null;
+      const now=new Date();
+      const isOverdue=due&&due<now&&t.status!=='done';
+      const dueStr=due?due.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}):'';
+      return`<div class="todo-item">
+        <div class="todo-check ${t.status==='done'?'checked':''}" onclick="cycleTodo(${t.id},'${t.status}')" title="click to cycle: todo → wip → done"></div>
+        <span class="todo-title ${t.status==='done'?'done':''}" style="flex:1">${t.title}</span>
+        ${dueStr?`<span style="font-size:10px;color:${isOverdue?'var(--red)':'var(--text-dim)'};margin-right:6px;flex-shrink:0">${isOverdue?'⚠ ':''}${dueStr}</span>`:''}
+        <span style="font-size:9px;padding:2px 6px;border:1px solid ${statusColors[t.status]};color:${statusColors[t.status]};flex-shrink:0;cursor:pointer;letter-spacing:.5px" onclick="cycleTodo(${t.id},'${t.status}')" title="click to advance status">${statusLabel[t.status]}</span>
+        <span class="todo-badge badge-${t.priority}" style="margin-left:6px">${t.priority}</span>
+        <button class="todo-del" onclick="deleteTodo(${t.id})">×</button>
+      </div>`;
+    }).join('');
 }
 
 function filterTodos(f,btn){
@@ -764,15 +776,17 @@ function filterTodos(f,btn){
 async function addTodo(){
   const title=document.getElementById('todo-title-input').value.trim();
   const priority=document.getElementById('todo-priority-input').value;
+  const due_date=document.getElementById('todo-due-input').value||null;
   if(!title)return;
   document.getElementById('todo-title-input').value='';
-  const todo=await api('POST','/api/todos',{title,priority});
+  document.getElementById('todo-due-input').value='';
+  const todo=await api('POST','/api/todos',{title,priority,due_date});
   if(todo.id){todos=[todo,...todos];renderTodos()}
 }
 
-async function toggleTodo(id,status){
-  const newStatus=status==='done'?'todo':'done';
-  const updated=await api('PUT',`/api/todos/${id}`,{status:newStatus});
+async function cycleTodo(id,status){
+  const next={todo:'wip',wip:'done',done:'todo'};
+  const updated=await api('PUT',`/api/todos/${id}`,{status:next[status]});
   if(updated.id){todos=todos.map(t=>t.id===id?updated:t);renderTodos()}
 }
 
@@ -793,15 +807,22 @@ async function loadPlans(){
 
 function renderPlans(){
   ['backlog','inprogress','done'].forEach(col=>{
-    const cards=plans.filter(p=>p.column===col);
+    const cards=plans.filter(p=>p.plan_column===col);
     document.getElementById('count-'+col).textContent=cards.length;
     document.getElementById('cards-'+col).innerHTML=cards.map(p=>{
       const cols=['backlog','inprogress','done'];
       const idx=cols.indexOf(col);
       const prevCol=idx>0?cols[idx-1]:null;
       const nextCol=idx<cols.length-1?cols[idx+1]:null;
+      const pDue=p.due_date?new Date(p.due_date):null;
+      const pNow=new Date();
+      const pOverdue=pDue&&pDue<pNow&&col!=='done';
+      const pDueStr=pDue?pDue.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}):'';
       return`<div class="kanban-card">
-        <div class="kanban-card-title">${p.title}</div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px">
+          <div class="kanban-card-title" style="flex:1">${p.title}</div>
+          ${pDueStr?`<span style="font-size:10px;color:${pOverdue?'var(--red)':'var(--text-dim)'};flex-shrink:0;white-space:nowrap">${pOverdue?'⚠ ':''}${pDueStr}</span>`:''}
+        </div>
         ${p.description?`<div class="kanban-card-desc">${p.description}</div>`:''}
         ${p.tags?.length?`<div class="kanban-card-tags">${p.tags.map(t=>`<span class="kanban-tag">${t}</span>`).join('')}</div>`:''}
         <div class="kanban-card-actions">
@@ -818,15 +839,17 @@ async function addPlan(){
   const title=document.getElementById('plan-title-input').value.trim();
   const desc=document.getElementById('plan-desc-input').value.trim();
   const column=document.getElementById('plan-col-input').value;
+  const due_date=document.getElementById('plan-due-input').value||null;
   if(!title)return;
   document.getElementById('plan-title-input').value='';
   document.getElementById('plan-desc-input').value='';
-  const plan=await api('POST','/api/plans',{title,description:desc||null,column});
+  document.getElementById('plan-due-input').value='';
+  const plan=await api('POST','/api/plans',{title,description:desc||null,plan_column:column,due_date});
   if(plan.id){plans=[...plans,plan];renderPlans()}
 }
 
-async function movePlan(id,column){
-  const updated=await api('PUT',`/api/plans/${id}`,{column});
+async function movePlan(id,plan_column){
+  const updated=await api('PUT',`/api/plans/${id}`,{plan_column});
   if(updated.id){plans=plans.map(p=>p.id===id?updated:p);renderPlans()}
 }
 
