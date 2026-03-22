@@ -1380,155 +1380,404 @@ function closeRepoPreview(){document.getElementById('repo-preview-overlay').clas
 
 // ── Floating assistant (embedded) ────────────────────────────
 (function(){
-  const botHTML=`
-  <div id="fa-wrap" style="position:fixed;bottom:28px;right:28px;z-index:9998;user-select:none">
-    <div id="fa-bubble" style="display:none;position:absolute;bottom:90px;right:0;width:320px;background:#10141c;border:1px solid #00ff88;box-shadow:0 0 30px rgba(0,255,136,0.12);flex-direction:column;animation:faSlide .2s ease">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 13px;border-bottom:1px solid #1e2535;background:#161b26">
+  // ── Terminal cursor assistant ─────────────────────────────
+  const faCSS = document.createElement('style');
+  faCSS.textContent = `
+    #fa-wrap {
+      position: fixed;
+      z-index: 9998;
+      user-select: none;
+      cursor: pointer;
+      transition: left 2.6s cubic-bezier(.37,0,.63,1), top 2.6s cubic-bezier(.37,0,.63,1);
+    }
+    #fa-cursor {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 15px;
+      font-weight: 700;
+      color: #00ff88;
+      letter-spacing: 1px;
+      white-space: nowrap;
+      padding: 6px 10px;
+      border: 1px solid rgba(0,255,136,0.3);
+      background: rgba(10,12,16,0.85);
+      backdrop-filter: blur(4px);
+      position: relative;
+      transition: all 0.3s ease;
+    }
+    #fa-cursor:hover {
+      border-color: #00ff88;
+      box-shadow: 0 0 16px rgba(0,255,136,0.3);
+    }
+    #fa-cursor.thinking { color: #f5a623; border-color: rgba(245,166,35,0.4); }
+    #fa-cursor.speaking { color: #00ff88; border-color: #00ff88; box-shadow: 0 0 12px rgba(0,255,136,0.4); }
+    #fa-cursor.excited  { color: #00ff88; border-color: #00ff88; animation: faPulse .4s ease-in-out infinite alternate; }
+    #fa-cursor.walking  { color: #4a9eff; border-color: rgba(74,158,255,0.4); }
+
+    #fa-blink {
+      display: inline-block;
+      animation: faBlink 1s step-end infinite;
+    }
+    @keyframes faBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+    @keyframes faPulse  { from{box-shadow:0 0 6px rgba(0,255,136,0.3)} to{box-shadow:0 0 20px rgba(0,255,136,0.7)} }
+    @keyframes faSlide  { from{opacity:0;transform:translateY(6px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+
+    #fa-bubble {
+      display: none;
+      position: fixed;
+      width: 320px;
+      background: #10141c;
+      border: 1px solid #00ff88;
+      box-shadow: 0 0 30px rgba(0,255,136,0.12), 0 8px 32px rgba(0,0,0,.6);
+      flex-direction: column;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    #fa-bubble.open { display: flex; animation: faSlide .18s ease; }
+  `;
+  document.head.appendChild(faCSS);
+
+  const botHTML = `
+  <div id="fa-wrap">
+    <div id="fa-cursor" style="cursor:grab">
+      <span id="fa-label">&gt; _</span><span id="fa-blink">▋</span>
+    </div>
+    <div id="fa-bubble">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #1e2535;background:#161b26">
         <div style="display:flex;align-items:center;gap:7px">
-          <div style="width:5px;height:5px;background:#00ff88;border-radius:50%;animation:pulse 2s infinite"></div>
-          <span style="font-size:10px;color:#00ff88;letter-spacing:1.5px;text-transform:uppercase">dev_assistant</span>
+          <span style="color:#00ff88;font-size:10px;letter-spacing:1.5px;text-transform:uppercase" id="fa-status-label">&gt; idle_</span>
         </div>
-        <button onclick="document.getElementById('fa-bubble').style.display='none'" style="background:transparent;border:none;color:#64748b;font-size:16px;cursor:pointer;line-height:1">×</button>
+        <button onclick="faClose()" style="background:transparent;border:none;color:#64748b;font-size:16px;cursor:pointer;line-height:1;font-family:inherit">×</button>
       </div>
-      <div id="fa-msgs" style="overflow-y:auto;padding:10px 12px;max-height:220px;display:flex;flex-direction:column;gap:6px;font-size:12px;font-family:'JetBrains Mono',monospace"></div>
+      <div id="fa-msgs" style="overflow-y:auto;padding:10px 12px;max-height:220px;display:flex;flex-direction:column;gap:6px;font-size:12px"></div>
       <div style="display:flex;border-top:1px solid #1e2535">
-        <input id="fa-input" placeholder="ask anything..." autocomplete="off" spellcheck="false"
+        <input id="fa-input" placeholder="> ask anything..." autocomplete="off" spellcheck="false"
           style="flex:1;background:#0a0c10;border:none;color:#e2e8f0;font-family:'JetBrains Mono',monospace;font-size:12px;padding:9px 11px;outline:none;min-width:0"/>
         <button id="fa-send" onclick="faSend()"
-          style="background:#00ff88;color:#000;border:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:0 14px;cursor:pointer;white-space:nowrap">→</button>
+          style="background:#00ff88;color:#000;border:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:0 14px;cursor:pointer;white-space:nowrap">↵</button>
       </div>
     </div>
-    <div id="fa-bot" onclick="faToggle()" title="ask me anything"
-      style="width:60px;height:60px;cursor:pointer;filter:drop-shadow(0 0 8px rgba(0,255,136,0.5));animation:faFloat 3s ease-in-out infinite;transition:filter .2s">
-      <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
-        <rect x="13" y="22" width="34" height="24" rx="5" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
-        <rect x="16" y="6" width="28" height="20" rx="5" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
-        <line x1="30" y1="6" x2="30" y2="1" stroke="#00ff88" stroke-width="1.5"/>
-        <circle cx="30" cy="1" r="2" fill="#00ff88"/>
-        <ellipse id="fa-el" cx="24" cy="15" rx="3" ry="3" fill="#00ff88"/>
-        <ellipse id="fa-er" cx="36" cy="15" rx="3" ry="3" fill="#00ff88"/>
-        <circle cx="24.8" cy="14.5" r="1.3" fill="#0a0c10"/>
-        <circle cx="36.8" cy="14.5" r="1.3" fill="#0a0c10"/>
-        <rect x="23" y="20" width="14" height="3" rx="1.5" fill="#00ff88" opacity=".5"/>
-        <rect x="4" y="26" width="9" height="5" rx="2.5" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
-        <rect x="47" y="26" width="9" height="5" rx="2.5" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
-        <rect x="18" y="28" width="24" height="13" rx="3" fill="#161b26" stroke="#1e2535" stroke-width="1"/>
-        <circle cx="25" cy="35" r="2" fill="#00ff88" opacity=".6"/>
-        <circle cx="30" cy="35" r="2" fill="#4a9eff" opacity=".6"/>
-        <circle cx="35" cy="35" r="2" fill="#f5a623" opacity=".6"/>
-        <rect x="19" y="44" width="8" height="10" rx="3" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
-        <rect x="33" y="44" width="8" height="10" rx="3" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
-      </svg>
-    </div>
-  </div>
-  <style>
-    @keyframes faFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-    @keyframes faSlide{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-  </style>`;
+  </div>`;
 
   document.body.insertAdjacentHTML('beforeend', botHTML);
 
-  let faMsgs=[], faOpen=false;
+  let faMsgs = [], faOpen = false, faEmotion = 'idle';
+  let roamX = window.innerWidth - 120, roamY = window.innerHeight - 80;
 
-  window.faToggle=function(){
-    faOpen=!faOpen;
-    const b=document.getElementById('fa-bubble');
-    b.style.display=faOpen?'flex':'none';
-    if(faOpen){
-      if(!faMsgs.length) faAddMsg('assistant',"Hey! I'm your assistant. What's up?");
+  const faWrap = document.getElementById('fa-wrap');
+  faWrap.style.left = roamX + 'px';
+  faWrap.style.top  = roamY + 'px';
+
+  // drag + throw with momentum
+  let faDragging = false, faDragOffX = 0, faDragOffY = 0, faDidDrag = false;
+  let faVX = 0, faVY = 0, faPrevX = 0, faPrevY = 0, faPrevT = 0;
+  let faThrowRAF = null;
+
+  function faStopThrow() {
+    if (faThrowRAF) { cancelAnimationFrame(faThrowRAF); faThrowRAF = null; }
+  }
+
+  function faThrow() {
+    const friction = 0.88;
+    const pad = 10;
+    const vw = window.innerWidth, vh = window.innerHeight;
+
+    function step() {
+      faVX *= friction;
+      faVY *= friction;
+      roamX = Math.max(pad, Math.min(vw - 80, roamX + faVX));
+      roamY = Math.max(pad, Math.min(vh - 40, roamY + faVY));
+
+      // bounce off walls
+      if (roamX <= pad || roamX >= vw - 80) { faVX *= -0.5; }
+      if (roamY <= pad || roamY >= vh - 40)  { faVY *= -0.5; }
+
+      faWrap.style.left = roamX + 'px';
+      faWrap.style.top  = roamY + 'px';
+      if (faOpen) faPositionBubble();
+
+      if (Math.abs(faVX) > 0.3 || Math.abs(faVY) > 0.3) {
+        faThrowRAF = requestAnimationFrame(step);
+      } else {
+        faThrowRAF = null;
+      }
+    }
+    faThrowRAF = requestAnimationFrame(step);
+  }
+
+  function faStartDrag(clientX, clientY) {
+    faStopThrow();
+    faDragging = true; faDidDrag = false;
+    faDragOffX = clientX - roamX;
+    faDragOffY = clientY - roamY;
+    faPrevX = clientX; faPrevY = clientY;
+    faPrevT = performance.now();
+    faVX = 0; faVY = 0;
+    faWrap.style.transition = 'none';
+    faWrap.style.cursor = 'grabbing';
+  }
+
+  function faMoveDrag(clientX, clientY) {
+    if (!faDragging) return;
+    faDidDrag = true;
+    const now = performance.now();
+    const dt = Math.max(1, now - faPrevT);
+    // track velocity (px/ms * 16 to get per-frame at ~60fps)
+    faVX = ((clientX - faPrevX) / dt) * 16;
+    faVY = ((clientY - faPrevY) / dt) * 16;
+    faPrevX = clientX; faPrevY = clientY; faPrevT = now;
+
+    roamX = Math.max(10, Math.min(window.innerWidth - 80, clientX - faDragOffX));
+    roamY = Math.max(10, Math.min(window.innerHeight - 40, clientY - faDragOffY));
+    faWrap.style.left = roamX + 'px';
+    faWrap.style.top  = roamY + 'px';
+    if (faOpen) faPositionBubble();
+  }
+
+  function faEndDrag() {
+    if (!faDragging) return;
+    faDragging = false;
+    faWrap.style.cursor = 'grab';
+    if (!faDidDrag) { faToggle(); return; }
+    // throw if velocity significant
+    if (Math.abs(faVX) > 1.5 || Math.abs(faVY) > 1.5) {
+      faThrow();
+    }
+  }
+
+  const faCursor = document.getElementById('fa-cursor');
+  faCursor.addEventListener('mousedown', e => { faStartDrag(e.clientX, e.clientY); e.preventDefault(); });
+  document.addEventListener('mousemove', e => faMoveDrag(e.clientX, e.clientY));
+  document.addEventListener('mouseup', () => faEndDrag());
+
+  faCursor.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    faStartDrag(t.clientX, t.clientY);
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!faDragging) return;
+    faMoveDrag(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  document.addEventListener('touchend', () => faEndDrag());
+
+  const faStates = {
+    idle:     { label: '> _',         cls: '' },
+    happy:    { label: '> hi! _',     cls: '' },
+    thinking: { label: '> ... _',     cls: 'thinking' },
+    speaking: { label: '> // _',      cls: 'speaking' },
+    excited:  { label: '> !!! _',     cls: 'excited' },
+    walking:  { label: '> roam _',    cls: 'walking' },
+  };
+
+  function faSetEmotion(e) {
+    faEmotion = e;
+    const s = faStates[e] || faStates.idle;
+    const cur = document.getElementById('fa-cursor');
+    const lbl = document.getElementById('fa-label');
+    const statusLbl = document.getElementById('fa-status-label');
+    if (!cur || !lbl) return;
+    lbl.textContent = s.label.replace('_','');
+    cur.className = s.cls;
+    if (statusLbl) statusLbl.innerHTML = s.label.replace('_', '<span id="fa-blink2" style="animation:faBlink 1s step-end infinite;display:inline-block">▋</span>');
+  }
+
+  // dummy — no SVG eye tracking needed
+  function faLookAt() {}
+
+  function faPositionBubble() {
+    const bub = document.getElementById('fa-bubble');
+    const bw = 320, bh = 340, vw = window.innerWidth, vh = window.innerHeight;
+    let bx = roamX - bw + 80, by = roamY - bh - 8;
+    if (bx < 8) bx = roamX;
+    if (bx + bw > vw - 8) bx = vw - bw - 8;
+    if (by < 8) by = roamY + 36;
+    if (by + bh > vh - 8) by = vh - bh - 8;
+    Object.assign(bub.style, { position:'fixed', left:bx+'px', top:by+'px', bottom:'auto', right:'auto' });
+  }
+
+  window.faClose = function() {
+    faOpen = false;
+    document.getElementById('fa-bubble').classList.remove('open');
+    faSetEmotion('idle');
+  };
+
+  window.faToggle = function() {
+    faOpen = !faOpen;
+    const bub = document.getElementById('fa-bubble');
+    if (faOpen) {
+      faPositionBubble();
+      bub.classList.add('open');
+      faSetEmotion('happy');
+      if (!faMsgs.length) faAddMsg('assistant', '// online\n> ready. ask me anything.');
       document.getElementById('fa-input').focus();
+    } else {
+      bub.classList.remove('open');
+      faSetEmotion('idle');
     }
   };
 
-  function faAddMsg(role,text){
-    faMsgs.push({role,content:text});
-    const el=document.createElement('div');
-    el.style.cssText=`padding:7px 10px;line-height:1.6;white-space:pre-wrap;word-break:break-word;${
-      role==='user'
-        ? 'background:rgba(0,255,136,.07);border:1px solid rgba(0,255,136,.2);align-self:flex-end;text-align:right;max-width:85%'
-        : 'background:#161b26;border:1px solid #1e2535;border-left:2px solid #00ff88;align-self:flex-start;max-width:90%'
+  function faAddMsg(role, text) {
+    faMsgs.push({ role, content: text });
+    const el = document.createElement('div');
+    el.style.cssText = `padding:7px 10px;line-height:1.65;white-space:pre-wrap;word-break:break-word;font-size:12px;${
+      role === 'user'
+        ? 'background:rgba(0,255,136,.06);border:1px solid rgba(0,255,136,.15);align-self:flex-end;text-align:right;max-width:88%;color:#e2e8f0'
+        : 'background:#161b26;border-left:2px solid #00ff88;padding-left:10px;align-self:flex-start;max-width:92%;color:#e2e8f0'
     }`;
-    el.textContent=text;
-    const msgs=document.getElementById('fa-msgs');
+    el.textContent = text;
+    const msgs = document.getElementById('fa-msgs');
     msgs.appendChild(el);
-    msgs.scrollTop=msgs.scrollHeight;
+    msgs.scrollTop = msgs.scrollHeight;
   }
 
-  window.faSend=async function(){
-    const inp=document.getElementById('fa-input');
-    const text=inp.value.trim();
-    if(!text||document.getElementById('fa-send').disabled)return;
-    inp.value='';
-    faAddMsg('user',text);
-    document.getElementById('fa-send').disabled=true;
+  window.faSend = async function() {
+    const inp = document.getElementById('fa-input');
+    const text = inp.value.trim();
+    if (!text || document.getElementById('fa-send').disabled) return;
+    inp.value = '';
+    faAddMsg('user', text);
+    document.getElementById('fa-send').disabled = true;
+    faSetEmotion('thinking');
 
-    // Get key from saved BYOK keys (openrouter first, then gemini)
-    const orKey=savedKeys.find(k=>k.provider==='openrouter');
-    const gmKey=savedKeys.find(k=>k.provider==='gemini');
-    if(!orKey&&!gmKey){
-      faAddMsg('assistant','// no api key found — add one in Settings → API Keys');
-      document.getElementById('fa-send').disabled=false;
+    const orKey = savedKeys.find(k => k.provider === 'openrouter');
+    const gmKey = savedKeys.find(k => k.provider === 'gemini');
+    if (!orKey && !gmKey) {
+      faAddMsg('assistant', '// error: no api key\n> add one in Settings → API Keys');
+      faSetEmotion('idle');
+      document.getElementById('fa-send').disabled = false;
       return;
     }
 
-    // Fetch decrypted key from worker
-    const keyData=await api('GET',`/api/keys/decrypt/${orKey?'openrouter':'gemini'}`).catch(()=>null);
-    const key=keyData?.key;
-    const provider=orKey?'openrouter':'gemini';
+    const keyData = await api('GET', `/api/keys/decrypt/${orKey ? 'openrouter' : 'gemini'}`).catch(() => null);
+    const key = keyData?.key;
+    const provider = orKey ? 'openrouter' : 'gemini';
 
-    if(!key){
-      faAddMsg('assistant','// could not retrieve api key');
-      document.getElementById('fa-send').disabled=false;
+    if (!key) {
+      faAddMsg('assistant', '// error: could not retrieve key');
+      faSetEmotion('idle');
+      document.getElementById('fa-send').disabled = false;
       return;
     }
 
-    const sys=`You are dev_assistant embedded in a developer dashboard. Be concise and direct. User: @${userData.login||'dev'}. Stack: ${Object.keys(langMap).slice(0,4).join(', ')}.`;
-    const history=faMsgs.slice(-8).map(m=>({role:m.role==='assistant'?'assistant':'user',content:m.content}));
+    const sys = `You are dev_assistant — a concise terminal-style AI embedded in a hacker dashboard. Respond in plain text, be direct, max 150 words. User: @${userData.login || 'dev'}. Stack: ${Object.keys(langMap).slice(0,4).join(', ')}.`;
+    const history = faMsgs.slice(-8).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
 
-    try{
-      let reply='';
-      if(provider==='openrouter'){
-        const res=await fetch('https://openrouter.ai/api/v1/chat/completions',{
-          method:'POST',
-          headers:{'Authorization':`Bearer ${key}`,'Content-Type':'application/json','X-Title':'dev_dashboard'},
-          body:JSON.stringify({model:'meta-llama/llama-3.3-70b-instruct',messages:[{role:'system',content:sys},...history],max_tokens:400,temperature:0.7})
+    try {
+      let reply = '';
+      if (provider === 'openrouter') {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': 'dev_dashboard' },
+          body: JSON.stringify({ model: 'meta-llama/llama-3.3-70b-instruct', messages: [{ role: 'system', content: sys }, ...history], max_tokens: 300, temperature: 0.7 })
         });
-        const d=await res.json();
-        if(d.error)throw new Error(d.error.message);
-        reply=d.choices?.[0]?.message?.content||'...';
+        const d = await res.json();
+        if (d.error) throw new Error(d.error.message);
+        reply = d.choices?.[0]?.message?.content || '...';
       } else {
-        const contents=history.map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]}));
-        const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,{
-          method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({system_instruction:{parts:[{text:sys}]},contents,generationConfig:{maxOutputTokens:400}})
+        const contents = history.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ system_instruction: { parts: [{ text: sys }] }, contents, generationConfig: { maxOutputTokens: 300 } })
         });
-        const d=await res.json();
-        if(d.error)throw new Error(d.error.message);
-        reply=d.candidates?.[0]?.content?.parts?.[0]?.text||'...';
+        const d = await res.json();
+        if (d.error) throw new Error(d.error.message);
+        reply = d.candidates?.[0]?.content?.parts?.[0]?.text || '...';
       }
-      faAddMsg('assistant',reply);
-    }catch(e){
-      faAddMsg('assistant',`// error: ${e.message}`);
+      faAddMsg('assistant', reply);
+      faSetEmotion('speaking');
+      setTimeout(() => { if (faOpen) faSetEmotion('happy'); }, 2000);
+    } catch(e) {
+      faAddMsg('assistant', `// error: ${e.message}`);
+      faSetEmotion('idle');
     }
-    document.getElementById('fa-send').disabled=false;
+    document.getElementById('fa-send').disabled = false;
     document.getElementById('fa-input').focus();
   };
 
-  document.addEventListener('keydown',e=>{
-    if(document.getElementById('fa-input')===document.activeElement&&e.key==='Enter') faSend();
-  });
+  function faRoam() {
+    if (faOpen) return;
+    const pad = 60, vw = window.innerWidth - pad, vh = window.innerHeight - pad;
+    const dx = (Math.random() - 0.5) * 300, dy = (Math.random() - 0.5) * 200;
+    roamX = Math.max(pad, Math.min(vw, roamX + dx));
+    roamY = Math.max(pad, Math.min(vh, roamY + dy));
+    faWrap.style.left = roamX + 'px';
+    faWrap.style.top  = roamY + 'px';
+    faSetEmotion('walking');
+    const after = ['idle', 'idle', 'excited'];
+    setTimeout(() => { if (!faOpen) faSetEmotion(after[Math.floor(Math.random() * after.length)]); }, 2600);
+  }
 
-  // blink
-  setInterval(()=>{
-    if(Math.random()>.6){
-      ['fa-el','fa-er'].forEach(id=>{
-        const el=document.getElementById(id);
-        if(!el)return;
-        el.setAttribute('ry','0.3');
-        setTimeout(()=>el.setAttribute('ry','3'),100);
-      });
+  setInterval(faRoam, 4500);
+  setTimeout(faRoam, 1800);
+
+  // occasional idle wiggle
+  setInterval(() => {
+    if (!faOpen && faEmotion === 'idle' && Math.random() > 0.6) {
+      faSetEmotion('excited');
+      setTimeout(() => { if (!faOpen) faSetEmotion('idle'); }, 1000);
     }
-  },2500);
+  }, 7000);
+
+  // idle quips — random motivation/joke via AI every ~90 seconds
+  let faQuipBusy = false;
+  async function faIdleQuip() {
+    if (faOpen || faQuipBusy || !savedKeys.length) return;
+    faQuipBusy = true;
+
+    const keyData = await api('GET', '/api/keys/decrypt/' + (savedKeys.find(k=>k.provider==='openrouter') ? 'openrouter' : 'gemini')).catch(()=>null);
+    const key = keyData?.key;
+    const provider = savedKeys.find(k=>k.provider==='openrouter') ? 'openrouter' : 'gemini';
+    if (!key) { faQuipBusy = false; return; }
+
+    const types = ['motivation', 'joke', 'fun fact', 'tip'];
+    const type = types[Math.floor(Math.random() * types.length)];
+    const prompt = 'Give a single ' + type + ' for a developer/hacker. Max 15 words. No preamble, no label, just the ' + type + ' itself. Be witty and sharp.';
+
+    try {
+      let text = '';
+      if (provider === 'openrouter') {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'dev_dashboard' },
+          body: JSON.stringify({ model: 'meta-llama/llama-3.3-70b-instruct', messages: [{ role: 'user', content: prompt }], max_tokens: 60, temperature: 0.95 })
+        });
+        const d = await res.json();
+        text = d.choices?.[0]?.message?.content?.trim() || '';
+      } else {
+        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + key, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 60, temperature: 0.95 } })
+        });
+        const d = await res.json();
+        text = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      }
+
+      if (text && !faOpen) {
+        // show as floating tooltip above the cursor
+        const wrap = document.getElementById('fa-wrap');
+        const tip = document.createElement('div');
+        tip.style.cssText = 'position:absolute;bottom:38px;left:50%;transform:translateX(-50%);background:#10141c;border:1px solid #00ff88;padding:7px 11px;font-size:11px;color:#00ff88;white-space:nowrap;max-width:260px;white-space:normal;line-height:1.5;z-index:10;animation:faSlide .2s ease;pointer-events:none;font-family:JetBrains Mono,monospace';
+        tip.textContent = '// ' + text;
+        wrap.appendChild(tip);
+        faSetEmotion('excited');
+        setTimeout(() => {
+          tip.style.opacity = '0';
+          tip.style.transition = 'opacity 0.5s';
+          setTimeout(() => { tip.remove(); if (!faOpen) faSetEmotion('idle'); }, 500);
+        }, 5000);
+      }
+    } catch(e) {}
+    faQuipBusy = false;
+  }
+
+  // run every 90 seconds, but randomize so not too predictable
+  setInterval(() => {
+    if (Math.random() > 0.4) faIdleQuip();
+  }, 90000);
+  // first quip after 30s so user sees it quickly
+  setTimeout(faIdleQuip, 30000);
+
+  document.addEventListener('keydown', e => {
+    if (document.getElementById('fa-input') === document.activeElement && e.key === 'Enter') faSend();
+  });
 })();
 
 // Enter key on todo input
