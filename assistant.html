@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>dev_assistant</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0c10;font-family:'JetBrains Mono',monospace;height:100vh;overflow:hidden;color:#e2e8f0}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,255,136,0.01) 2px,rgba(0,255,136,0.01) 4px);pointer-events:none;z-index:0}
+
+#assistant{position:fixed;width:80px;height:80px;cursor:pointer;z-index:100;bottom:100px;right:80px;user-select:none;filter:drop-shadow(0 0 8px rgba(0,255,136,0.4));transition:filter .3s}
+#assistant:hover{filter:drop-shadow(0 0 20px rgba(0,255,136,0.9))}
+#assistant.idle{animation:idleFloat 3s ease-in-out infinite}
+#assistant.speaking{animation:speakBounce .35s ease infinite alternate}
+#assistant.thinking{animation:thinkSpin .8s linear infinite}
+
+@keyframes idleFloat{0%,100%{transform:translateY(0) rotate(0deg)}33%{transform:translateY(-8px) rotate(-2deg)}66%{transform:translateY(-4px) rotate(2deg)}}
+@keyframes speakBounce{0%{transform:scaleY(1) scaleX(1)}100%{transform:scaleY(1.06) scaleX(.97)}}
+@keyframes thinkSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes blink{0%,90%,100%{transform:scaleY(1)}95%{transform:scaleY(0.1)}}
+@keyframes dotPulse{0%,80%,100%{opacity:.2;transform:scale(.7)}40%{opacity:1;transform:scale(1)}}
+
+#chat-bubble{position:fixed;z-index:101;background:#10141c;border:1px solid #00ff88;width:360px;display:none;flex-direction:column;box-shadow:0 0 40px rgba(0,255,136,0.12),0 8px 32px rgba(0,0,0,.5);animation:slideUp .2s ease}
+#chat-bubble.active{display:flex}
+
+.bubble-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #1e2535;background:#161b26}
+.bubble-name{display:flex;align-items:center;gap:8px}
+.bubble-dot{width:6px;height:6px;background:#00ff88;border-radius:50%;animation:dotPulse 2s infinite}
+.bubble-title{font-size:11px;color:#00ff88;letter-spacing:1.5px;text-transform:uppercase}
+.bubble-close{background:transparent;border:none;color:#64748b;font-size:18px;cursor:pointer;line-height:1;padding:0 2px;transition:color .2s}
+.bubble-close:hover{color:#ff4455}
+
+.bubble-messages{overflow-y:auto;padding:12px 14px;max-height:280px;display:flex;flex-direction:column;gap:8px}
+.bubble-messages::-webkit-scrollbar{width:2px}
+.bubble-messages::-webkit-scrollbar-thumb{background:#1e2535}
+
+.msg{font-size:12px;line-height:1.65;padding:8px 11px;max-width:88%;white-space:pre-wrap;word-break:break-word}
+.msg.assistant{background:#161b26;border:1px solid #1e2535;border-left:2px solid #00ff88;color:#e2e8f0;align-self:flex-start}
+.msg.user{background:rgba(0,255,136,.07);border:1px solid rgba(0,255,136,.2);color:#e2e8f0;align-self:flex-end;text-align:right}
+.msg.error{border-left-color:#ff4455;color:#ff4455}
+
+.typing-wrap{display:flex;gap:4px;align-items:center;padding:10px 11px;background:#161b26;border:1px solid #1e2535;border-left:2px solid #00ff88;align-self:flex-start;width:52px}
+.td{width:5px;height:5px;background:#00ff88;border-radius:50%;animation:dotPulse 1.2s infinite}
+.td:nth-child(2){animation-delay:.2s}
+.td:nth-child(3){animation-delay:.4s}
+
+.quick-prompts{display:flex;gap:5px;flex-wrap:wrap;padding:8px 14px;border-top:1px solid #1e2535;background:#0d1017}
+.qp{font-size:10px;padding:3px 9px;background:transparent;border:1px solid #1e2535;color:#64748b;font-family:'JetBrains Mono',monospace;cursor:pointer;letter-spacing:.5px;transition:all .2s;white-space:nowrap}
+.qp:hover{border-color:#00ff88;color:#00ff88}
+
+.input-row{display:flex;border-top:1px solid #1e2535}
+#chat-input{flex:1;background:#0a0c10;border:none;color:#e2e8f0;font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 12px;outline:none;min-width:0}
+#chat-input::placeholder{color:#2a3547}
+#send-btn{background:#00ff88;color:#000;border:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:0 16px;cursor:pointer;letter-spacing:.5px;white-space:nowrap;transition:opacity .2s;flex-shrink:0}
+#send-btn:hover{opacity:.85}
+#send-btn:disabled{opacity:.35;cursor:not-allowed}
+
+#key-prompt{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:200;background:rgba(10,12,16,.95)}
+.kp-box{background:#10141c;border:1px solid #00ff88;padding:40px 48px;width:440px;position:relative}
+.kp-corner{position:absolute;width:12px;height:12px;border-color:#00ff88;border-style:solid}
+.kp-corner.tl{top:-1px;left:-1px;border-width:2px 0 0 2px}
+.kp-corner.tr{top:-1px;right:-1px;border-width:2px 2px 0 0}
+.kp-corner.bl{bottom:-1px;left:-1px;border-width:0 0 2px 2px}
+.kp-corner.br{bottom:-1px;right:-1px;border-width:0 2px 2px 0}
+.kp-title{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#00ff88;margin-bottom:4px}
+.kp-sub{font-size:11px;color:#64748b;margin-bottom:28px;line-height:1.7}
+.kp-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#64748b;margin-bottom:6px;margin-top:14px;display:block}
+.kp-select,.kp-input{width:100%;background:#161b26;border:1px solid #1e2535;color:#e2e8f0;font-family:'JetBrains Mono',monospace;font-size:12px;padding:9px 13px;outline:none;transition:border-color .2s;margin-bottom:0}
+.kp-select{cursor:pointer;color:#64748b}
+.kp-input:focus,.kp-select:focus{border-color:#00ff88}
+.kp-btn{width:100%;background:#00ff88;color:#000;border:none;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:1px;padding:12px;cursor:pointer;text-transform:uppercase;transition:opacity .2s;margin-top:20px}
+.kp-btn:hover{opacity:.85}
+
+#hint{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);font-size:10px;color:#1e2535;letter-spacing:1px;text-transform:uppercase;pointer-events:none}
+</style>
+</head>
+<body>
+
+<div id="key-prompt">
+  <div class="kp-box">
+    <div class="kp-corner tl"></div><div class="kp-corner tr"></div>
+    <div class="kp-corner bl"></div><div class="kp-corner br"></div>
+    <div class="kp-title">dev_assistant</div>
+    <div class="kp-sub">Your roaming AI companion. Bring your own key.</div>
+    <label class="kp-label">provider</label>
+    <select class="kp-select" id="kp-provider">
+      <option value="openrouter">OpenRouter</option>
+      <option value="gemini">Gemini</option>
+    </select>
+    <label class="kp-label">api key</label>
+    <input class="kp-input" id="kp-key" type="password" placeholder="sk-or-v1-... or AIzaSy..." autocomplete="off" spellcheck="false" />
+    <button class="kp-btn" onclick="startAssistant()">[ launch ]</button>
+  </div>
+</div>
+
+<div id="assistant" class="idle" onclick="toggleChat()" style="display:none">
+  <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="glow"><feGaussianBlur stdDeviation="1.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <!-- Body -->
+    <rect x="18" y="30" width="44" height="32" rx="7" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
+    <!-- Head -->
+    <rect x="22" y="8" width="36" height="26" rx="6" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
+    <!-- Antenna -->
+    <line x1="40" y1="8" x2="40" y2="1" stroke="#00ff88" stroke-width="1.5"/>
+    <circle cx="40" cy="1" r="2.5" fill="#00ff88" filter="url(#glow)"/>
+    <!-- Eyes -->
+    <ellipse id="eye-l" cx="32" cy="20" rx="4" ry="4" fill="#00ff88" filter="url(#glow)"/>
+    <ellipse id="eye-r" cx="48" cy="20" rx="4" ry="4" fill="#00ff88" filter="url(#glow)"/>
+    <circle cx="33" cy="20" r="1.8" fill="#0a0c10"/>
+    <circle cx="49" cy="20" r="1.8" fill="#0a0c10"/>
+    <circle cx="33.8" cy="19.2" r=".7" fill="#fff" opacity=".8"/>
+    <circle cx="49.8" cy="19.2" r=".7" fill="#fff" opacity=".8"/>
+    <!-- Neck -->
+    <rect x="35" y="33" width="10" height="5" rx="2" fill="#1e2535"/>
+    <!-- Mouth -->
+    <rect id="mouth" x="31" y="27" width="18" height="4" rx="2" fill="#00ff88" opacity=".5"/>
+    <!-- Arms -->
+    <rect x="5" y="35" width="13" height="6" rx="3" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
+    <rect x="62" y="35" width="13" height="6" rx="3" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
+    <!-- Legs -->
+    <rect x="25" y="60" width="10" height="14" rx="4" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
+    <rect x="45" y="60" width="10" height="14" rx="4" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
+    <!-- Chest panel -->
+    <rect x="26" y="38" width="28" height="18" rx="3" fill="#161b26" stroke="#1e2535" stroke-width="1"/>
+    <circle cx="33" cy="47" r="2.5" fill="#00ff88" opacity=".6"/>
+    <circle cx="40" cy="47" r="2.5" fill="#4a9eff" opacity=".6"/>
+    <circle cx="47" cy="47" r="2.5" fill="#f5a623" opacity=".6"/>
+    <rect x="30" y="41" width="20" height="2" rx="1" fill="#1e2535"/>
+  </svg>
+</div>
+
+<div id="chat-bubble">
+  <div class="bubble-header">
+    <div class="bubble-name">
+      <div class="bubble-dot"></div>
+      <span class="bubble-title">dev_assistant</span>
+    </div>
+    <button class="bubble-close" onclick="toggleChat()">×</button>
+  </div>
+  <div class="bubble-messages" id="messages"></div>
+  <div class="quick-prompts">
+    <button class="qp" onclick="quickPrompt('What should I focus on today?')">today?</button>
+    <button class="qp" onclick="quickPrompt('Review my stack')">stack</button>
+    <button class="qp" onclick="quickPrompt('Give me a quick coding challenge in Python')">challenge</button>
+    <button class="qp" onclick="quickPrompt('Explain CORS simply')">cors?</button>
+    <button class="qp" onclick="quickPrompt('Best practices for REST APIs')">rest api</button>
+  </div>
+  <div class="input-row">
+    <input id="chat-input" placeholder="ask anything..." autocomplete="off" spellcheck="false" />
+    <button id="send-btn" onclick="sendMessage()">send →</button>
+  </div>
+</div>
+
+<div id="hint">click the robot to chat</div>
+
+<script>
+let API_KEY = '', PROVIDER = 'openrouter';
+let chatOpen = false;
+let messages = [];
+let posX, posY;
+let roamTimer = null;
+
+const bot = document.getElementById('assistant');
+const bubble = document.getElementById('chat-bubble');
+const msgsEl = document.getElementById('messages');
+const inp = document.getElementById('chat-input');
+const sendBtn = document.getElementById('send-btn');
+const hint = document.getElementById('hint');
+
+// ── Init ──────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const k = localStorage.getItem('da_key');
+  const p = localStorage.getItem('da_provider');
+  if (k) { API_KEY = k; PROVIDER = p || 'openrouter'; launch(); }
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+  document.getElementById('kp-key').addEventListener('keydown', e => { if (e.key === 'Enter') startAssistant(); });
+});
+
+function startAssistant() {
+  const k = document.getElementById('kp-key').value.trim();
+  const p = document.getElementById('kp-provider').value;
+  if (!k) { document.getElementById('kp-key').style.borderColor = '#ff4455'; return; }
+  API_KEY = k; PROVIDER = p;
+  localStorage.setItem('da_key', k);
+  localStorage.setItem('da_provider', p);
+  document.getElementById('key-prompt').style.display = 'none';
+  launch();
+}
+
+function launch() {
+  document.getElementById('key-prompt').style.display = 'none';
+  bot.style.display = 'block';
+  posX = window.innerWidth - 140;
+  posY = window.innerHeight - 180;
+  bot.style.left = posX + 'px';
+  bot.style.top = posY + 'px';
+  bot.style.bottom = 'auto';
+  bot.style.right = 'auto';
+  startRoaming();
+  setTimeout(greet, 600);
+}
+
+// ── Roaming ───────────────────────────────────────────────────
+function startRoaming() {
+  roamTimer = setInterval(() => { if (!chatOpen) roam(); }, 5000);
+}
+
+function roam() {
+  const pw = window.innerWidth - 100, ph = window.innerHeight - 100;
+  const dx = (Math.random() - 0.5) * 200, dy = (Math.random() - 0.5) * 140;
+  posX = Math.max(10, Math.min(pw, posX + dx));
+  posY = Math.max(10, Math.min(ph, posY + dy));
+  bot.style.transition = 'left 2.5s cubic-bezier(.25,.46,.45,.94), top 2.5s cubic-bezier(.25,.46,.45,.94)';
+  bot.style.left = posX + 'px';
+  bot.style.top = posY + 'px';
+  syncBubble();
+}
+
+function syncBubble() {
+  const bw = 360, bh = 400;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let bx = posX + 90, by = posY - 60;
+  if (bx + bw > vw - 8) bx = posX - bw - 8;
+  if (by + bh > vh - 8) by = posY - bh + 80;
+  if (by < 8) by = posY + 90;
+  bubble.style.left = bx + 'px';
+  bubble.style.top = by + 'px';
+  bubble.style.bottom = 'auto';
+  bubble.style.right = 'auto';
+}
+
+// ── Toggle chat ───────────────────────────────────────────────
+function toggleChat() {
+  chatOpen = !chatOpen;
+  if (chatOpen) {
+    syncBubble();
+    bubble.classList.add('active');
+    setAnim('speaking');
+    hint.style.display = 'none';
+    inp.focus();
+  } else {
+    bubble.classList.remove('active');
+    setAnim('idle');
+    hint.style.display = 'block';
+  }
+}
+
+function setAnim(state) {
+  bot.className = state;
+}
+
+// ── Messages ──────────────────────────────────────────────────
+function addMsg(role, text, extra = '') {
+  messages.push({ role, content: text });
+  const el = document.createElement('div');
+  el.className = `msg ${role}${extra ? ' ' + extra : ''}`;
+  el.textContent = text;
+  msgsEl.appendChild(el);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return el;
+}
+
+function showTyping() {
+  const el = document.createElement('div');
+  el.className = 'typing-wrap'; el.id = 'typing';
+  el.innerHTML = '<div class="td"></div><div class="td"></div><div class="td"></div>';
+  msgsEl.appendChild(el);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+function hideTyping() {
+  const el = document.getElementById('typing');
+  if (el) el.remove();
+}
+
+function greet() {
+  const g = [
+    "Hey dev! I'm your assistant. Ask me anything — code, debugging, architecture, or just vibe.",
+    "// online\n\nReady to help. What are we building today?",
+    "Hello! I'm here whenever you need me. Ask away.",
+  ];
+  addMsg('assistant', g[Math.floor(Math.random() * g.length)]);
+}
+
+function quickPrompt(t) { inp.value = t; sendMessage(); }
+
+// ── Send ──────────────────────────────────────────────────────
+async function sendMessage() {
+  const text = inp.value.trim();
+  if (!text || sendBtn.disabled) return;
+  inp.value = '';
+  addMsg('user', text);
+  sendBtn.disabled = true;
+  setAnim('thinking');
+  showTyping();
+
+  const sys = `You are dev_assistant — a concise, sharp AI coding assistant with a hacker aesthetic.
+Expertise: cybersecurity, IoT, Python, C/C++, Go, JavaScript/TypeScript, Linux, EdTech, DevOps.
+Be direct and practical. Use code blocks when relevant. Skip filler phrases.
+Keep replies under 200 words unless a detailed answer is genuinely needed.`;
+
+  const history = messages.slice(-12).map(m => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user',
+    content: m.content
+  }));
+
+  try {
+    let reply = '';
+
+    if (PROVIDER === 'openrouter') {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': window.location.href,
+          'X-Title': 'dev_assistant',
+        },
+        body: JSON.stringify({
+          model: 'meta-llama/llama-3.3-70b-instruct',
+          messages: [{ role: 'system', content: sys }, ...history],
+          max_tokens: 600,
+          temperature: 0.72,
+        }),
+      });
+      const d = await res.json();
+      if (d.error) throw new Error(d.error.message);
+      reply = d.choices?.[0]?.message?.content || '...';
+
+    } else {
+      const contents = history.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: sys }] },
+            contents,
+            generationConfig: { maxOutputTokens: 600, temperature: 0.72 },
+          }),
+        }
+      );
+      const d = await res.json();
+      if (d.error) throw new Error(d.error.message);
+      reply = d.candidates?.[0]?.content?.parts?.[0]?.text || '...';
+    }
+
+    hideTyping();
+    addMsg('assistant', reply);
+    setAnim('speaking');
+    setTimeout(() => { if (chatOpen) setAnim('idle'); }, 1800);
+
+  } catch (e) {
+    hideTyping();
+    addMsg('assistant', `// error: ${e.message}`, 'error');
+    setAnim('idle');
+  }
+
+  sendBtn.disabled = false;
+  inp.focus();
+}
+
+// ── Eye blink ─────────────────────────────────────────────────
+setInterval(() => {
+  if (Math.random() > 0.65) {
+    ['eye-l','eye-r'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.setAttribute('ry', '0.4');
+      setTimeout(() => el.setAttribute('ry', '4'), 110);
+    });
+  }
+}, 2800);
+</script>
+</body>
+</html>
