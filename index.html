@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>dev_dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -234,6 +235,32 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 @keyframes blink{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
 @keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(350%)}}
 @media(max-width:900px){.grid-2,.grid-4,.kanban-board,.suggestion-grid{grid-template-columns:1fr}}
+/* ── Markdown styles ── */
+.md-content h1,.md-content h2,.md-content h3{color:var(--green);font-family:var(--font-display);font-weight:600;margin:10px 0 6px;line-height:1.3}
+.md-content h1{font-size:16px}.md-content h2{font-size:14px}.md-content h3{font-size:13px}
+.md-content p{margin-bottom:8px;line-height:1.7;font-size:12px;color:var(--text)}
+.md-content ul,.md-content ol{margin:6px 0 8px 16px;font-size:12px;color:var(--text);line-height:1.7}
+.md-content li{margin-bottom:3px}
+.md-content code{background:var(--surface2);border:1px solid var(--border);padding:1px 5px;font-family:var(--font-mono);font-size:11px;color:var(--green)}
+.md-content pre{background:var(--surface2);border:1px solid var(--border);padding:10px;margin:8px 0;overflow-x:auto}
+.md-content pre code{background:none;border:none;padding:0;color:var(--green);font-size:11px}
+.md-content blockquote{border-left:2px solid var(--green);padding-left:10px;color:var(--text-muted);font-style:italic;margin:8px 0}
+.md-content strong{color:var(--text);font-weight:700}
+.md-content em{color:var(--text-muted)}
+.md-content a{color:var(--blue);text-decoration:none}
+.md-content a:hover{text-decoration:underline}
+.md-content hr{border:none;border-top:1px solid var(--border);margin:10px 0}
+.md-content table{width:100%;border-collapse:collapse;font-size:11px;margin:8px 0}
+.md-content th{background:var(--surface2);border:1px solid var(--border);padding:6px 10px;text-align:left;color:var(--green);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+.md-content td{border:1px solid var(--border);padding:6px 10px;color:var(--text)}
+/* ── MD editor ── */
+.md-editor-wrap{position:relative;margin-bottom:10px}
+.md-tabs{display:flex;gap:0;margin-bottom:0;border-bottom:1px solid var(--border)}
+.md-tab{background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text-muted);font-family:var(--font-mono);font-size:10px;padding:6px 14px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;margin-bottom:-1px;transition:all .2s}
+.md-tab.active{color:var(--green);border-bottom-color:var(--green)}
+.md-textarea{width:100%;min-height:120px;background:var(--surface2);border:1px solid var(--border);border-top:none;color:var(--text);font-family:var(--font-mono);font-size:12px;padding:10px 12px;outline:none;resize:vertical;transition:border-color .2s;line-height:1.6}
+.md-textarea:focus{border-color:var(--green)}
+.md-preview{min-height:120px;background:var(--surface2);border:1px solid var(--border);border-top:none;padding:10px 12px;display:none}
 </style>
 </head>
 <body>
@@ -321,7 +348,6 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 
   <div class="nav-tabs">
     <button class="nav-tab active" onclick="switchTab('overview')">overview</button>
-    <button class="nav-tab" onclick="switchTab('todos')">todos</button>
     <button class="nav-tab" onclick="switchTab('plans')">plans</button>
     <button class="nav-tab" onclick="switchTab('ai')">ai</button>
     <button class="nav-tab" onclick="switchTab('settings')">settings</button>
@@ -362,10 +388,20 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     </div>
   </div>
 
-  <!-- Todos tab -->
-  <div id="tab-todos" class="tab-panel">
-    <div class="card">
-      <div class="card-title"><div class="card-title-left"><span class="card-icon"></span>todos</div></div>
+  <!-- Plans tab (includes todos) -->
+  <div id="tab-plans" class="tab-panel">
+
+    <!-- Quick todos section -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">
+        <div class="card-title-left"><span class="card-icon"></span>todos</div>
+        <div style="display:flex;gap:6px">
+          <button class="filter-btn active" onclick="filterTodos('all',this)">all</button>
+          <button class="filter-btn" onclick="filterTodos('todo',this)">todo</button>
+          <button class="filter-btn" onclick="filterTodos('wip',this)">wip</button>
+          <button class="filter-btn" onclick="filterTodos('done',this)">done</button>
+        </div>
+      </div>
       <div class="todo-form">
         <input class="todo-input" id="todo-title-input" placeholder="add a new todo..." />
         <select class="todo-select" id="todo-priority-input">
@@ -376,23 +412,15 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
         <input class="todo-input" id="todo-due-input" type="date" style="flex:0 0 140px;color:var(--text-muted)" title="due date (optional)" />
         <button class="btn-primary" onclick="addTodo()">[ add ]</button>
       </div>
-      <div class="todo-filters">
-        <button class="filter-btn active" onclick="filterTodos('all',this)">all</button>
-        <button class="filter-btn" onclick="filterTodos('todo',this)">todo</button>
-        <button class="filter-btn" onclick="filterTodos('wip',this)">wip</button>
-        <button class="filter-btn" onclick="filterTodos('done',this)">done</button>
-      </div>
       <div id="todo-list"></div>
     </div>
-  </div>
 
-  <!-- Plans tab -->
-  <div id="tab-plans" class="tab-panel">
+    <!-- Kanban plans section -->
     <div class="card">
       <div class="card-title"><div class="card-title-left"><span class="card-icon"></span>plans</div></div>
       <div class="plan-form">
         <input class="plan-input" id="plan-title-input" placeholder="plan title..." />
-        <input class="plan-input" id="plan-desc-input" placeholder="description (optional)" style="flex:2" />
+
         <input class="todo-input" id="plan-due-input" type="date" style="flex:0 0 140px;color:var(--text-muted);background:var(--surface2);border:1px solid var(--border);padding:8px 10px;font-family:var(--font-mono);font-size:11px;outline:none" title="due date (optional)" />
         <select class="todo-select" id="plan-col-input">
           <option value="backlog">backlog</option>
@@ -401,22 +429,33 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
         </select>
         <button class="btn-primary" onclick="addPlan()">[ add ]</button>
       </div>
-      <div class="kanban-board">
-        <div class="kanban-col" id="col-backlog">
+      <div class="kanban-board" id="kanban-board"
+        ondragover="event.preventDefault()"
+        ondrop="event.preventDefault()">
+        <div class="kanban-col" id="col-backlog"
+          ondragover="event.preventDefault();this.style.borderColor='var(--green)'"
+          ondragleave="this.style.borderColor='var(--border)'"
+          ondrop="dropPlan(event,'backlog');this.style.borderColor='var(--border)'">
           <div class="kanban-col-header">
             <div class="kanban-col-title"><div class="col-dot backlog"></div>backlog</div>
             <span class="col-count" id="count-backlog">0</span>
           </div>
           <div id="cards-backlog"></div>
         </div>
-        <div class="kanban-col" id="col-inprogress">
+        <div class="kanban-col" id="col-inprogress"
+          ondragover="event.preventDefault();this.style.borderColor='var(--amber)'"
+          ondragleave="this.style.borderColor='var(--border)'"
+          ondrop="dropPlan(event,'inprogress');this.style.borderColor='var(--border)'">
           <div class="kanban-col-header">
             <div class="kanban-col-title"><div class="col-dot inprogress"></div>in progress</div>
             <span class="col-count" id="count-inprogress">0</span>
           </div>
           <div id="cards-inprogress"></div>
         </div>
-        <div class="kanban-col" id="col-done">
+        <div class="kanban-col" id="col-done"
+          ondragover="event.preventDefault();this.style.borderColor='var(--green)'"
+          ondragleave="this.style.borderColor='var(--border)'"
+          ondrop="dropPlan(event,'done');this.style.borderColor='var(--border)'">
           <div class="kanban-col-header">
             <div class="kanban-col-title"><div class="col-dot done"></div>done</div>
             <span class="col-count" id="count-done">0</span>
@@ -477,6 +516,51 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     <span><span class="status-dot" style="width:5px;height:5px"></span>live</span>
     <span>user: <span id="sb-user">—</span></span>
     <span class="status-bar-right">dev_dashboard v2.0 // github + neon + cloudflare</span>
+  </div>
+</div>
+
+<!-- ── Plan detail panel ──────────────────────────────────── -->
+<div class="modal-overlay" id="plan-detail-overlay" onclick="closePlanDetail()">
+  <div class="modal" style="width:520px;max-height:80vh;overflow-y:auto" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div class="modal-title" id="pd-title">Plan Detail</div>
+      <button class="btn-ghost" onclick="closePlanDetail()">[ close ]</button>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px">status</div>
+      <div id="pd-status" style="font-size:12px;color:var(--green)">—</div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px">description</div>
+      <div id="pd-desc" class="md-content" style="font-size:12px;line-height:1.7">—</div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px">due date</div>
+      <div id="pd-due" style="font-size:12px;color:var(--text)">—</div>
+    </div>
+    <div style="margin-bottom:20px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px">tags</div>
+      <div id="pd-tags" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+    </div>
+    <div id="pd-edit-section" style="display:none;margin-bottom:16px">
+      <div class="md-editor-wrap">
+        <div class="md-tabs">
+          <button class="md-tab active" onclick="switchPdTab('write',this)">write</button>
+          <button class="md-tab" onclick="switchPdTab('preview',this)">preview</button>
+        </div>
+        <textarea class="md-textarea" id="pd-edit-textarea" style="min-height:160px" placeholder="edit description..."></textarea>
+        <div class="md-preview md-content" id="pd-edit-preview"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn-primary" onclick="pdSaveEdit()">[ save ]</button>
+        <button class="btn-outline" onclick="pdCancelEdit()">[ cancel ]</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn-primary" id="pd-move-next" onclick="pdMoveNext()">[ move forward ]</button>
+      <button class="btn-outline" onclick="pdStartEdit()">[ edit ]</button>
+      <button class="btn-outline danger" id="pd-delete" onclick="pdDelete()">[ delete ]</button>
+    </div>
   </div>
 </div>
 
@@ -558,7 +642,7 @@ function logout(){
 // ── Tab switching ─────────────────────────────────────────────
 function switchTab(name){
   document.querySelectorAll('.nav-tab').forEach((t,i)=>{
-    const tabs=['overview','todos','plans','ai','settings'];
+    const tabs=['overview','plans','ai','settings'];
     t.classList.toggle('active',tabs[i]===name);
   });
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
@@ -818,14 +902,17 @@ function renderPlans(){
       const pNow=new Date();
       const pOverdue=pDue&&pDue<pNow&&col!=='done';
       const pDueStr=pDue?pDue.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}):'';
-      return`<div class="kanban-card">
+      return`<div class="kanban-card" draggable="true"
+        ondragstart="dragStart(event,${p.id})"
+        ondragend="this.style.opacity='1'"
+        onclick="openPlanDetail(${p.id})">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px">
           <div class="kanban-card-title" style="flex:1">${p.title}</div>
           ${pDueStr?`<span style="font-size:10px;color:${pOverdue?'var(--red)':'var(--text-dim)'};flex-shrink:0;white-space:nowrap">${pOverdue?'⚠ ':''}${pDueStr}</span>`:''}
         </div>
-        ${p.description?`<div class="kanban-card-desc">${p.description}</div>`:''}
+        ${p.description?`<div class="kanban-card-desc md-content" style="max-height:48px;overflow:hidden;mask-image:linear-gradient(180deg,#fff 60%,transparent)">${typeof marked !== 'undefined' ? marked.parse(p.description) : p.description}</div>`:''}
         ${p.tags?.length?`<div class="kanban-card-tags">${p.tags.map(t=>`<span class="kanban-tag">${t}</span>`).join('')}</div>`:''}
-        <div class="kanban-card-actions">
+        <div class="kanban-card-actions" onclick="event.stopPropagation()">
           ${prevCol?`<button class="kanban-move" onclick="movePlan(${p.id},'${prevCol}')">← ${prevCol==='backlog'?'backlog':'in progress'}</button>`:''}
           ${nextCol?`<button class="kanban-move" onclick="movePlan(${p.id},'${nextCol}')">${nextCol==='done'?'done':'in progress'} →</button>`:''}
           <button class="kanban-del" onclick="deletePlan(${p.id})">del</button>
@@ -1038,6 +1125,133 @@ async function init(){
   }catch(e){
     hideLoader();showScreen('login');
   }
+}
+
+// ── MD tab switcher ───────────────────────────────────────────
+function switchMdTab(tab, btn) {
+  document.querySelectorAll('.md-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const textarea = document.getElementById('plan-desc-input');
+  const preview = document.getElementById('plan-desc-preview');
+  if (tab === 'preview') {
+    const md = textarea.value.trim();
+    preview.innerHTML = md ? (typeof marked !== 'undefined' ? marked.parse(md) : md) : '<span style="color:var(--text-dim);font-size:12px">nothing to preview</span>';
+    textarea.style.display = 'none';
+    preview.style.display = 'block';
+  } else {
+    textarea.style.display = 'block';
+    preview.style.display = 'none';
+  }
+}
+
+// ── Drag & drop ───────────────────────────────────────────────
+let draggedPlanId = null;
+
+function dragStart(e, id) {
+  draggedPlanId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => { if(e.target) e.target.style.opacity = '0.4'; }, 0);
+}
+
+function dropPlan(e, col) {
+  e.preventDefault();
+  if (!draggedPlanId) return;
+  movePlan(draggedPlanId, col);
+  draggedPlanId = null;
+}
+
+// ── Plan detail panel ─────────────────────────────────────────
+let activePlanId = null;
+
+function openPlanDetail(id) {
+  const p = plans.find(x => x.id === id);
+  if (!p) return;
+  activePlanId = id;
+  const colLabel = {backlog:'Backlog', inprogress:'In Progress', done:'Done'};
+  const colColors = {backlog:'var(--text-muted)', inprogress:'var(--amber)', done:'var(--green)'};
+  document.getElementById('pd-title').textContent = p.title;
+  document.getElementById('pd-status').textContent = colLabel[p.plan_column] || p.plan_column;
+  document.getElementById('pd-status').style.color = colColors[p.plan_column] || 'var(--text)';
+  document.getElementById('pd-desc').innerHTML = p.description ? (typeof marked !== 'undefined' ? marked.parse(p.description) : p.description) : '<span style="color:var(--text-dim)">No description</span>';
+  const due = p.due_date ? new Date(p.due_date) : null;
+  const isOverdue = due && due < new Date() && p.plan_column !== 'done';
+  document.getElementById('pd-due').textContent = due
+    ? due.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'}) + (isOverdue ? ' ⚠ overdue' : '')
+    : 'No due date';
+  document.getElementById('pd-due').style.color = isOverdue ? 'var(--red)' : 'var(--text)';
+  document.getElementById('pd-tags').innerHTML = (p.tags||[]).map(t=>`<span class="kanban-tag">${t}</span>`).join('') || '<span style="color:var(--text-dim);font-size:11px">no tags</span>';
+  const cols = ['backlog','inprogress','done'];
+  const nextCol = cols[cols.indexOf(p.plan_column)+1];
+  const moveBtn = document.getElementById('pd-move-next');
+  if (nextCol) {
+    moveBtn.textContent = `[ move to ${nextCol==='inprogress'?'in progress':nextCol} ]`;
+    moveBtn.style.display = 'block';
+  } else {
+    moveBtn.style.display = 'none';
+  }
+  document.getElementById('plan-detail-overlay').classList.add('active');
+}
+
+function closePlanDetail() {
+  document.getElementById('plan-detail-overlay').classList.remove('active');
+  activePlanId = null;
+}
+
+function pdMoveNext() {
+  if (!activePlanId) return;
+  const p = plans.find(x => x.id === activePlanId);
+  if (!p) return;
+  const cols = ['backlog','inprogress','done'];
+  const next = cols[cols.indexOf(p.plan_column)+1];
+  if (next) { closePlanDetail(); movePlan(activePlanId, next); }
+}
+
+function pdStartEdit() {
+  const p = plans.find(x => x.id === activePlanId);
+  if (!p) return;
+  document.getElementById('pd-edit-textarea').value = p.description || '';
+  document.getElementById('pd-edit-section').style.display = 'block';
+  document.getElementById('pd-edit-preview').style.display = 'none';
+  document.getElementById('pd-edit-textarea').style.display = 'block';
+  document.querySelectorAll('#pd-edit-section .md-tab').forEach((b,i) => b.classList.toggle('active', i===0));
+}
+
+function pdCancelEdit() {
+  document.getElementById('pd-edit-section').style.display = 'none';
+}
+
+async function pdSaveEdit() {
+  const desc = document.getElementById('pd-edit-textarea').value.trim();
+  const updated = await api('PUT', `/api/plans/${activePlanId}`, { description: desc || null });
+  if (updated.id) {
+    plans = plans.map(p => p.id === activePlanId ? updated : p);
+    document.getElementById('pd-desc').innerHTML = desc
+      ? (typeof marked !== 'undefined' ? marked.parse(desc) : desc)
+      : '<span style="color:var(--text-dim)">No description</span>';
+    document.getElementById('pd-edit-section').style.display = 'none';
+    renderPlans();
+  }
+}
+
+function switchPdTab(tab, btn) {
+  document.querySelectorAll('#pd-edit-section .md-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const ta = document.getElementById('pd-edit-textarea');
+  const pr = document.getElementById('pd-edit-preview');
+  if (tab === 'preview') {
+    pr.innerHTML = ta.value.trim()
+      ? (typeof marked !== 'undefined' ? marked.parse(ta.value) : ta.value)
+      : '<span style="color:var(--text-dim);font-size:12px">nothing to preview</span>';
+    ta.style.display = 'none'; pr.style.display = 'block';
+  } else {
+    ta.style.display = 'block'; pr.style.display = 'none';
+  }
+}
+
+function pdDelete() {
+  if (!activePlanId) return;
+  closePlanDetail();
+  deletePlan(activePlanId);
 }
 
 // Enter key on todo input
