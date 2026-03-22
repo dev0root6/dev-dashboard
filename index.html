@@ -519,6 +519,52 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   </div>
 </div>
 
+<!-- ── Repo preview panel ────────────────────────────────────── -->
+<div class="modal-overlay" id="repo-preview-overlay" onclick="closeRepoPreview()">
+  <div class="modal" style="width:560px;max-height:82vh;overflow-y:auto" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:12px">
+      <div style="flex:1;min-width:0">
+        <div id="rp-name" style="font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--blue);margin-bottom:4px;word-break:break-all">—</div>
+        <div id="rp-desc" style="font-size:12px;color:var(--text-muted);line-height:1.6">—</div>
+      </div>
+      <button class="btn-ghost" onclick="closeRepoPreview()" style="flex-shrink:0">[ close ]</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+      <div style="background:var(--surface2);border:1px solid var(--border);padding:10px;text-align:center">
+        <div id="rp-stars" style="font-size:18px;font-weight:700;color:var(--amber)">—</div>
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">stars</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);padding:10px;text-align:center">
+        <div id="rp-forks" style="font-size:18px;font-weight:700;color:var(--blue)">—</div>
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">forks</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);padding:10px;text-align:center">
+        <div id="rp-issues" style="font-size:18px;font-weight:700;color:var(--green)">—</div>
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">issues</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <div style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);padding:10px">
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">language</div>
+        <div id="rp-lang" style="font-size:12px;color:var(--text)">—</div>
+      </div>
+      <div style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);padding:10px">
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">last push</div>
+        <div id="rp-pushed" style="font-size:12px;color:var(--text)">—</div>
+      </div>
+      <div style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);padding:10px">
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">license</div>
+        <div id="rp-license" style="font-size:12px;color:var(--text)">—</div>
+      </div>
+    </div>
+    <div id="rp-topics" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px"></div>
+    <div style="display:flex;gap:8px">
+      <a id="rp-link" href="#" target="_blank" rel="noopener" class="btn-primary" style="text-decoration:none;display:inline-block">[ open on github ↗ ]</a>
+      <button class="btn-outline" onclick="closeRepoPreview()">[ close ]</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Plan detail panel ──────────────────────────────────── -->
 <div class="modal-overlay" id="plan-detail-overlay" onclick="closePlanDetail()">
   <div class="modal" style="width:520px;max-height:80vh;overflow-y:auto" onclick="event.stopPropagation()">
@@ -810,14 +856,17 @@ function renderLangs(){
 function renderRepos(){
   const top=[...repoData].sort((a,b)=>b.stargazers_count-a.stargazers_count).slice(0,6);
   document.getElementById('repo-list').innerHTML=top.map(r=>`
-    <a class="repo-item" href="${r.html_url}" target="_blank" rel="noopener" style="text-decoration:none;cursor:pointer;display:flex;align-items:flex-start;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);gap:12px;transition:background .15s;" onmouseover="this.style.background='rgba(0,255,136,0.04)'" onmouseout="this.style.background='transparent'">
-      <div>
-        <div class="repo-name" style="color:var(--blue)">${r.name} ↗</div>
+    <div class="repo-item" style="cursor:pointer;transition:background .15s"
+      onclick="openRepoPreview(${JSON.stringify(r).replace(/"/g,'&quot;')})"
+      onmouseover="this.style.background='rgba(0,255,136,0.04)'"
+      onmouseout="this.style.background='transparent'">
+      <div style="flex:1;min-width:0">
+        <div class="repo-name" style="color:var(--blue)">${r.name}</div>
         <div class="repo-desc">${r.description||'no description'}</div>
         <div style="margin-top:4px;font-size:11px">${r.language?`<span class="lang-dot" style="background:${lc(r.language)}"></span>${r.language}`:''}</div>
       </div>
       <div class="repo-meta"><span class="stars">★ ${r.stargazers_count}</span><span>⑂ ${r.forks_count}</span></div>
-    </a>`).join('');
+    </div>`).join('');
 }
 
 // ── Todos ─────────────────────────────────────────────────────
@@ -966,18 +1015,71 @@ async function loadInsights(){
 }
 
 async function loadSuggestions(){
-  if(!savedKeys.length)return;
-  document.getElementById('suggestions-output').innerHTML=`<div class="ai-loading"><div class="typing-dots"><span></span><span></span><span></span></div><span style="margin-left:4px">finding repos...</span></div>`;
-  const langs=Object.entries(langMap).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([l])=>l);
-  const topRepos=[...repoData].sort((a,b)=>b.stargazers_count-a.stargazers_count).slice(0,5).map(r=>r.name);
-  const data=await api('POST','/api/suggestions',{languages:langs,top_repos:topRepos,username:userData.login});
-  if(data.error){document.getElementById('suggestions-output').innerHTML=`<div style="color:var(--red);font-size:12px">// ${data.message||data.error}</div>`;return}
-  document.getElementById('suggestions-output').innerHTML=`<div class="suggestion-grid">${(data.suggestions||[]).map(s=>`
-    <div class="suggestion-card">
-      <div class="suggestion-repo">⑂ ${s.name}</div>
-      <div class="suggestion-desc">${s.description}</div>
-      <div class="suggestion-reason">// ${s.reason}</div>
-    </div>`).join('')}</div>`;
+  document.getElementById('suggestions-output').innerHTML=`<div class="ai-loading"><div class="typing-dots"><span></span><span></span><span></span></div><span style="margin-left:4px">fetching trending projects...</span></div>`;
+
+  // Get user's top languages
+  const langs=Object.entries(langMap).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([l])=>l);
+  const userRepoNames=new Set(repoData.map(r=>r.full_name||r.name));
+
+  // Keywords that indicate a real project (not a package/lib)
+  const projectTopics='topic:hacktoberfest+topic:awesome+topic:cli+topic:tool+topic:bot+topic:security+topic:iot+topic:monitoring+topic:dashboard';
+
+  try {
+    // Search GitHub for fun/interesting projects in user's languages
+    const queries = langs.slice(0,2).map(lang =>
+      `https://api.github.com/search/repositories?q=language:${encodeURIComponent(lang)}+${projectTopics}+stars:>500+is:public&sort=updated&order=desc&per_page=15`
+    );
+    // Also fetch trending security/dev tools regardless of language
+    queries.push(`https://api.github.com/search/repositories?q=topic:security+topic:hacking+stars:>200+is:public&sort=updated&order=desc&per_page=10`);
+    queries.push(`https://api.github.com/search/repositories?q=topic:developer-tools+topic:cli+stars:>300+is:public&sort=updated&order=desc&per_page=10`);
+
+    const headers={'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.v3+json'};
+    const results = await Promise.all(queries.map(url=>fetch(url,{headers}).then(r=>r.json()).catch(()=>({items:[]}))));
+
+    // Flatten, dedupe, filter out user's own repos and pure libraries
+    const SKIP_KEYWORDS = ['sdk','npm','package','library','lib','boilerplate','template','framework','starter','awesome-list','cheatsheet','course','tutorial','learning'];
+    const seen = new Set();
+    let all = [];
+    results.forEach(r=>{
+      (r.items||[]).forEach(repo=>{
+        if(seen.has(repo.full_name)) return;
+        if(userRepoNames.has(repo.name)) return;
+        const nameDesc = (repo.name+' '+(repo.description||'')).toLowerCase();
+        if(SKIP_KEYWORDS.some(k=>nameDesc.includes(k))) return;
+        seen.add(repo.full_name);
+        all.push(repo);
+      });
+    });
+
+    // Sort by recency + stars combined, pick top 6
+    all.sort((a,b)=>{
+      const scoreA = a.stargazers_count * 0.3 + (new Date(a.pushed_at).getTime()/1e11);
+      const scoreB = b.stargazers_count * 0.3 + (new Date(b.pushed_at).getTime()/1e11);
+      return scoreB - scoreA;
+    });
+    const picks = all.slice(0,6);
+
+    if(!picks.length){
+      document.getElementById('suggestions-output').innerHTML=`<div style="color:var(--text-dim);font-size:12px">no suggestions found — try refreshing</div>`;
+      return;
+    }
+
+    document.getElementById('suggestions-output').innerHTML=`<div class="suggestion-grid">${picks.map(r=>`
+      <div class="suggestion-card" style="cursor:pointer" onclick="openRepoPreview(${JSON.stringify(r).replace(/"/g,'&quot;')})">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div class="suggestion-repo">⑂ ${r.full_name}</div>
+          <span style="font-size:10px;color:var(--amber)">★ ${fmtNum(r.stargazers_count)}</span>
+        </div>
+        <div class="suggestion-desc">${r.description||'no description'}</div>
+        <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+          ${r.language?`<span style="font-size:10px;color:var(--text-dim)"><span class="lang-dot" style="background:${lc(r.language)}"></span>${r.language}</span>`:''}
+          <span style="font-size:10px;color:var(--text-dim);margin-left:auto">${new Date(r.pushed_at).toLocaleDateString('en-GB',{month:'short',year:'numeric'})}</span>
+        </div>
+      </div>`).join('')}</div>`;
+
+  } catch(e) {
+    document.getElementById('suggestions-output').innerHTML=`<div style="color:var(--red);font-size:12px">// error: ${e.message}</div>`;
+  }
 }
 
 // ── Settings keys ─────────────────────────────────────────────
@@ -1253,6 +1355,181 @@ function pdDelete() {
   closePlanDetail();
   deletePlan(activePlanId);
 }
+
+// ── Repo preview ─────────────────────────────────────────────
+function openRepoPreview(r) {
+  if(typeof r === 'string') try{r=JSON.parse(r)}catch{return}
+  document.getElementById('rp-name').textContent = r.full_name || r.name;
+  document.getElementById('rp-desc').textContent = r.description || 'No description';
+  document.getElementById('rp-stars').textContent = fmtNum(r.stargazers_count||0);
+  document.getElementById('rp-forks').textContent = fmtNum(r.forks_count||0);
+  document.getElementById('rp-issues').textContent = fmtNum(r.open_issues_count||0);
+  const lang = r.language || '—';
+  document.getElementById('rp-lang').innerHTML = r.language
+    ? `<span class="lang-dot" style="background:${lc(r.language)}"></span>${r.language}` : '—';
+  document.getElementById('rp-pushed').textContent = r.pushed_at
+    ? new Date(r.pushed_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+  document.getElementById('rp-license').textContent = r.license?.name || r.license?.spdx_id || 'none';
+  const topics = r.topics||[];
+  document.getElementById('rp-topics').innerHTML = topics.map(t=>`<span class="kanban-tag">${t}</span>`).join('');
+  const url = r.html_url || `https://github.com/${r.full_name||r.name}`;
+  document.getElementById('rp-link').href = url;
+  document.getElementById('repo-preview-overlay').classList.add('active');
+}
+function closeRepoPreview(){document.getElementById('repo-preview-overlay').classList.remove('active')}
+
+// ── Floating assistant (embedded) ────────────────────────────
+(function(){
+  const botHTML=`
+  <div id="fa-wrap" style="position:fixed;bottom:28px;right:28px;z-index:9998;user-select:none">
+    <div id="fa-bubble" style="display:none;position:absolute;bottom:90px;right:0;width:320px;background:#10141c;border:1px solid #00ff88;box-shadow:0 0 30px rgba(0,255,136,0.12);flex-direction:column;animation:faSlide .2s ease">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 13px;border-bottom:1px solid #1e2535;background:#161b26">
+        <div style="display:flex;align-items:center;gap:7px">
+          <div style="width:5px;height:5px;background:#00ff88;border-radius:50%;animation:pulse 2s infinite"></div>
+          <span style="font-size:10px;color:#00ff88;letter-spacing:1.5px;text-transform:uppercase">dev_assistant</span>
+        </div>
+        <button onclick="document.getElementById('fa-bubble').style.display='none'" style="background:transparent;border:none;color:#64748b;font-size:16px;cursor:pointer;line-height:1">×</button>
+      </div>
+      <div id="fa-msgs" style="overflow-y:auto;padding:10px 12px;max-height:220px;display:flex;flex-direction:column;gap:6px;font-size:12px;font-family:'JetBrains Mono',monospace"></div>
+      <div style="display:flex;border-top:1px solid #1e2535">
+        <input id="fa-input" placeholder="ask anything..." autocomplete="off" spellcheck="false"
+          style="flex:1;background:#0a0c10;border:none;color:#e2e8f0;font-family:'JetBrains Mono',monospace;font-size:12px;padding:9px 11px;outline:none;min-width:0"/>
+        <button id="fa-send" onclick="faSend()"
+          style="background:#00ff88;color:#000;border:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:0 14px;cursor:pointer;white-space:nowrap">→</button>
+      </div>
+    </div>
+    <div id="fa-bot" onclick="faToggle()" title="ask me anything"
+      style="width:60px;height:60px;cursor:pointer;filter:drop-shadow(0 0 8px rgba(0,255,136,0.5));animation:faFloat 3s ease-in-out infinite;transition:filter .2s">
+      <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+        <rect x="13" y="22" width="34" height="24" rx="5" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
+        <rect x="16" y="6" width="28" height="20" rx="5" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
+        <line x1="30" y1="6" x2="30" y2="1" stroke="#00ff88" stroke-width="1.5"/>
+        <circle cx="30" cy="1" r="2" fill="#00ff88"/>
+        <ellipse id="fa-el" cx="24" cy="15" rx="3" ry="3" fill="#00ff88"/>
+        <ellipse id="fa-er" cx="36" cy="15" rx="3" ry="3" fill="#00ff88"/>
+        <circle cx="24.8" cy="14.5" r="1.3" fill="#0a0c10"/>
+        <circle cx="36.8" cy="14.5" r="1.3" fill="#0a0c10"/>
+        <rect x="23" y="20" width="14" height="3" rx="1.5" fill="#00ff88" opacity=".5"/>
+        <rect x="4" y="26" width="9" height="5" rx="2.5" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
+        <rect x="47" y="26" width="9" height="5" rx="2.5" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
+        <rect x="18" y="28" width="24" height="13" rx="3" fill="#161b26" stroke="#1e2535" stroke-width="1"/>
+        <circle cx="25" cy="35" r="2" fill="#00ff88" opacity=".6"/>
+        <circle cx="30" cy="35" r="2" fill="#4a9eff" opacity=".6"/>
+        <circle cx="35" cy="35" r="2" fill="#f5a623" opacity=".6"/>
+        <rect x="19" y="44" width="8" height="10" rx="3" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
+        <rect x="33" y="44" width="8" height="10" rx="3" fill="#10141c" stroke="#00ff88" stroke-width="1.5"/>
+      </svg>
+    </div>
+  </div>
+  <style>
+    @keyframes faFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+    @keyframes faSlide{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  </style>`;
+
+  document.body.insertAdjacentHTML('beforeend', botHTML);
+
+  let faMsgs=[], faOpen=false;
+
+  window.faToggle=function(){
+    faOpen=!faOpen;
+    const b=document.getElementById('fa-bubble');
+    b.style.display=faOpen?'flex':'none';
+    if(faOpen){
+      if(!faMsgs.length) faAddMsg('assistant',"Hey! I'm your assistant. What's up?");
+      document.getElementById('fa-input').focus();
+    }
+  };
+
+  function faAddMsg(role,text){
+    faMsgs.push({role,content:text});
+    const el=document.createElement('div');
+    el.style.cssText=`padding:7px 10px;line-height:1.6;white-space:pre-wrap;word-break:break-word;${
+      role==='user'
+        ? 'background:rgba(0,255,136,.07);border:1px solid rgba(0,255,136,.2);align-self:flex-end;text-align:right;max-width:85%'
+        : 'background:#161b26;border:1px solid #1e2535;border-left:2px solid #00ff88;align-self:flex-start;max-width:90%'
+    }`;
+    el.textContent=text;
+    const msgs=document.getElementById('fa-msgs');
+    msgs.appendChild(el);
+    msgs.scrollTop=msgs.scrollHeight;
+  }
+
+  window.faSend=async function(){
+    const inp=document.getElementById('fa-input');
+    const text=inp.value.trim();
+    if(!text||document.getElementById('fa-send').disabled)return;
+    inp.value='';
+    faAddMsg('user',text);
+    document.getElementById('fa-send').disabled=true;
+
+    // Get key from saved BYOK keys (openrouter first, then gemini)
+    const orKey=savedKeys.find(k=>k.provider==='openrouter');
+    const gmKey=savedKeys.find(k=>k.provider==='gemini');
+    if(!orKey&&!gmKey){
+      faAddMsg('assistant','// no api key found — add one in Settings → API Keys');
+      document.getElementById('fa-send').disabled=false;
+      return;
+    }
+
+    // Fetch decrypted key from worker
+    const keyData=await api('GET',`/api/keys/decrypt/${orKey?'openrouter':'gemini'}`).catch(()=>null);
+    const key=keyData?.key;
+    const provider=orKey?'openrouter':'gemini';
+
+    if(!key){
+      faAddMsg('assistant','// could not retrieve api key');
+      document.getElementById('fa-send').disabled=false;
+      return;
+    }
+
+    const sys=`You are dev_assistant embedded in a developer dashboard. Be concise and direct. User: @${userData.login||'dev'}. Stack: ${Object.keys(langMap).slice(0,4).join(', ')}.`;
+    const history=faMsgs.slice(-8).map(m=>({role:m.role==='assistant'?'assistant':'user',content:m.content}));
+
+    try{
+      let reply='';
+      if(provider==='openrouter'){
+        const res=await fetch('https://openrouter.ai/api/v1/chat/completions',{
+          method:'POST',
+          headers:{'Authorization':`Bearer ${key}`,'Content-Type':'application/json','X-Title':'dev_dashboard'},
+          body:JSON.stringify({model:'meta-llama/llama-3.3-70b-instruct',messages:[{role:'system',content:sys},...history],max_tokens:400,temperature:0.7})
+        });
+        const d=await res.json();
+        if(d.error)throw new Error(d.error.message);
+        reply=d.choices?.[0]?.message?.content||'...';
+      } else {
+        const contents=history.map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]}));
+        const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({system_instruction:{parts:[{text:sys}]},contents,generationConfig:{maxOutputTokens:400}})
+        });
+        const d=await res.json();
+        if(d.error)throw new Error(d.error.message);
+        reply=d.candidates?.[0]?.content?.parts?.[0]?.text||'...';
+      }
+      faAddMsg('assistant',reply);
+    }catch(e){
+      faAddMsg('assistant',`// error: ${e.message}`);
+    }
+    document.getElementById('fa-send').disabled=false;
+    document.getElementById('fa-input').focus();
+  };
+
+  document.addEventListener('keydown',e=>{
+    if(document.getElementById('fa-input')===document.activeElement&&e.key==='Enter') faSend();
+  });
+
+  // blink
+  setInterval(()=>{
+    if(Math.random()>.6){
+      ['fa-el','fa-er'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(!el)return;
+        el.setAttribute('ry','0.3');
+        setTimeout(()=>el.setAttribute('ry','3'),100);
+      });
+    }
+  },2500);
+})();
 
 // Enter key on todo input
 document.addEventListener('DOMContentLoaded',()=>{
