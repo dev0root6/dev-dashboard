@@ -505,6 +505,10 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
           <div>
             <div style="font-size:12px;color:var(--text)" id="settings-username">—</div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:2px">GitHub OAuth session — 30 day token</div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">
+              public profile: <a id="settings-public-url" href="#" target="_blank" style="color:var(--blue);text-decoration:none">—</a>
+              <button onclick="copyPublicURL()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:10px;padding:2px 8px;cursor:pointer;margin-left:8px;letter-spacing:.5px" id="copy-pub-btn">copy</button>
+            </div>
           </div>
           <button class="btn-outline danger" onclick="logout()">[ logout ]</button>
         </div>
@@ -680,6 +684,15 @@ function loginWithGitHub(){
   window.location.href=`${API_BASE}/auth/github/login`;
 }
 
+function copyPublicURL(){
+  const url=window._publicURL||document.getElementById('settings-public-url')?.href;
+  if(!url||url==='#')return;
+  navigator.clipboard.writeText(url).then(()=>{
+    const btn=document.getElementById('copy-pub-btn');
+    if(btn){btn.textContent='copied!';setTimeout(()=>btn.textContent='copy',2000);}
+  });
+}
+
 function logout(){
   confirm('Log out?') && (AUTH_TOKEN='',ghToken='',userData={},repoData=[],eventData=[],langMap={},todos=[],plans=[],savedKeys=[],
   localStorage.removeItem('dd_token'),showScreen('login'));
@@ -785,6 +798,13 @@ function renderOverview(){
   document.getElementById('meta-repos').textContent=userData.public_repos||0;
   document.getElementById('meta-followers').textContent=fmtNum(userData.followers||0);
   document.getElementById('sb-user').textContent=userData.login;
+  // wire public profile URL
+  if(userData.public_slug){
+    const cleanPub=new URL('profile.html', window.location.href).href + '?u=' + userData.public_slug;
+    const el=document.getElementById('settings-public-url');
+    if(el){el.href=cleanPub;el.textContent=cleanPub;}
+    window._publicURL=cleanPub;
+  }
   document.getElementById('settings-username').textContent=`@${userData.login}`;
 
   const stars=repoData.reduce((a,r)=>a+(r.stargazers_count||0),0);
@@ -1009,7 +1029,18 @@ async function loadInsights(){
   const langs=Object.entries(langMap).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([l])=>l);
   const topRepos=[...repoData].sort((a,b)=>b.stargazers_count-a.stargazers_count).slice(0,5).map(r=>`${r.name}(★${r.stargazers_count},${r.language||'?'})`);
   const stats={stars:repoData.reduce((a,r)=>a+(r.stargazers_count||0),0),forks:repoData.reduce((a,r)=>a+(r.forks_count||0),0),repos:userData.public_repos,followers:userData.followers};
-  const data=await api('POST','/api/insights',{languages:langs,top_repos:topRepos,stats,username:userData.login});
+  const controller=new AbortController();
+  const insightTimeout=setTimeout(()=>controller.abort(),15000);
+  let data;
+  try{
+    const r=await fetch(API_BASE+'/api/insights',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${AUTH_TOKEN}`},body:JSON.stringify({languages:langs,top_repos:topRepos,stats,username:userData.login}),signal:controller.signal});
+    data=await r.json();
+  }catch(e){
+    clearTimeout(insightTimeout);
+    document.getElementById('insights-output').innerHTML=`<div style="color:var(--red);font-size:12px">// ${e.name==='AbortError'?'request timed out after 15s':e.message}</div>`;
+    return;
+  }
+  clearTimeout(insightTimeout);
   if(data.error){document.getElementById('insights-output').innerHTML=`<div style="color:var(--red);font-size:12px">// ${data.message||data.error}</div>`;return}
   document.getElementById('insights-output').innerHTML=(data.insights||[]).map(i=>`<div class="ai-line"><span class="ai-arrow">→</span><span>${i.insight}</span></div>`).join('');
 }
@@ -1020,54 +1051,49 @@ async function loadSuggestions(){
   const langs=Object.entries(langMap).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([l])=>l);
   const userRepoNames=new Set(repoData.map(r=>r.full_name||r.name));
 
-  // Large topic pool — pick 3 random ones each refresh
-  const ALL_TOPICS = [
-    'topic:cli','topic:tool','topic:bot','topic:security','topic:hacking',
-    'topic:iot','topic:monitoring','topic:dashboard','topic:terminal',
-    'topic:automation','topic:devops','topic:api','topic:game','topic:productivity',
-    'topic:reverse-engineering','topic:penetration-testing','topic:fuzzing',
-    'topic:network','topic:linux','topic:raspberry-pi','topic:arduino',
-    'topic:machine-learning','topic:data-science','topic:visualization',
-    'topic:compiler','topic:interpreter','topic:editor','topic:shell',
+  // Topic buckets — each bucket has related topics, pick 1 topic per query (OR logic)
+  const TOPIC_BUCKETS = [
+    ['topic:security','topic:hacking','topic:penetration-testing','topic:ctf','topic:exploit'],
+    ['topic:cli','topic:terminal','topic:shell','topic:command-line'],
+    ['topic:tool','topic:developer-tools','topic:productivity','topic:automation'],
+    ['topic:iot','topic:arduino','topic:raspberry-pi','topic:embedded'],
+    ['topic:monitoring','topic:dashboard','topic:devops','topic:sysadmin'],
+    ['topic:bot','topic:chatbot','topic:telegram-bot','topic:discord-bot'],
+    ['topic:game','topic:gamedev','topic:puzzle'],
+    ['topic:network','topic:networking','topic:proxy','topic:vpn'],
+    ['topic:reverse-engineering','topic:malware','topic:forensics'],
+    ['topic:api','topic:rest-api','topic:graphql'],
   ];
 
-  // Shuffle helper
   function shuffle(arr) {
     const a = [...arr];
-    for (let i = a.length-1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i+1));
-      [a[i],a[j]] = [a[j],a[i]];
-    }
+    for (let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
     return a;
   }
 
-  // Random star threshold: 100–1000
-  function randStars() { return [100,200,300,500,1000][Math.floor(Math.random()*5)]; }
-  // Random sort
-  function randSort() { return ['updated','stars'][Math.floor(Math.random()*2)]; }
-  // Random page (1-3) so same query returns different results
-  function randPage() { return Math.floor(Math.random()*3)+1; }
+  function randPage() { return Math.floor(Math.random()*4)+1; }
+  function randSort() { return ['updated','stars','help-wanted-issues'][Math.floor(Math.random()*3)]; }
 
-  // Pick 3 random topics per query
-  const pickedTopics = shuffle(ALL_TOPICS).slice(0,3).join('+');
-  const pickedTopics2 = shuffle(ALL_TOPICS).slice(0,3).join('+');
-  const pickedTopics3 = shuffle(ALL_TOPICS).slice(0,3).join('+');
+  // Pick a single topic from a random bucket
+  function pickTopic() {
+    const bucket = TOPIC_BUCKETS[Math.floor(Math.random()*TOPIC_BUCKETS.length)];
+    return bucket[Math.floor(Math.random()*bucket.length)];
+  }
 
-  // Shuffle langs and pick randomly
   const shuffledLangs = shuffle(langs);
+  const t1=pickTopic(), t2=pickTopic(), t3=pickTopic();
 
   try {
     const headers={'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.v3+json'};
 
+    // Each query uses ONE topic (not ANDed) — much more results
     const queries = [
-      // User's top language + random topics
-      `https://api.github.com/search/repositories?q=language:${encodeURIComponent(shuffledLangs[0]||'Python')}+${pickedTopics}+stars:>${randStars()}+is:public&sort=${randSort()}&order=desc&per_page=15&page=${randPage()}`,
-      // Second language if exists
-      shuffledLangs[1]
-        ? `https://api.github.com/search/repositories?q=language:${encodeURIComponent(shuffledLangs[1])}+${pickedTopics2}+stars:>${randStars()}+is:public&sort=${randSort()}&order=desc&per_page=15&page=${randPage()}`
-        : `https://api.github.com/search/repositories?q=${pickedTopics2}+stars:>500+is:public&sort=updated&order=desc&per_page=15&page=${randPage()}`,
-      // Pure random topic set — no language filter
-      `https://api.github.com/search/repositories?q=${pickedTopics3}+stars:>${randStars()}+is:public&sort=${randSort()}&order=desc&per_page=15&page=${randPage()}`,
+      // Language + single topic — broad
+      `https://api.github.com/search/repositories?q=language:${encodeURIComponent(shuffledLangs[0]||'Python')}+${t1}+stars:>50+is:public+fork:false&sort=${randSort()}&order=desc&per_page=20&page=${randPage()}`,
+      // Second lang + different topic
+      `https://api.github.com/search/repositories?q=language:${encodeURIComponent(shuffledLangs[1]||shuffledLangs[0]||'JavaScript')}+${t2}+stars:>50+is:public+fork:false&sort=${randSort()}&order=desc&per_page=20&page=${randPage()}`,
+      // No language filter — just a topic, broader catch
+      `https://api.github.com/search/repositories?q=${t3}+stars:>100+is:public+fork:false&sort=${randSort()}&order=desc&per_page=20&page=${randPage()}`,
     ];
 
     const results = await Promise.all(queries.map(url=>fetch(url,{headers}).then(r=>r.json()).catch(()=>({items:[]}))));
