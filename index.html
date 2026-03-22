@@ -1017,27 +1017,62 @@ async function loadInsights(){
 async function loadSuggestions(){
   document.getElementById('suggestions-output').innerHTML=`<div class="ai-loading"><div class="typing-dots"><span></span><span></span><span></span></div><span style="margin-left:4px">fetching trending projects...</span></div>`;
 
-  // Get user's top languages
-  const langs=Object.entries(langMap).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([l])=>l);
+  const langs=Object.entries(langMap).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([l])=>l);
   const userRepoNames=new Set(repoData.map(r=>r.full_name||r.name));
 
-  // Keywords that indicate a real project (not a package/lib)
-  const projectTopics='topic:hacktoberfest+topic:awesome+topic:cli+topic:tool+topic:bot+topic:security+topic:iot+topic:monitoring+topic:dashboard';
+  // Large topic pool — pick 3 random ones each refresh
+  const ALL_TOPICS = [
+    'topic:cli','topic:tool','topic:bot','topic:security','topic:hacking',
+    'topic:iot','topic:monitoring','topic:dashboard','topic:terminal',
+    'topic:automation','topic:devops','topic:api','topic:game','topic:productivity',
+    'topic:reverse-engineering','topic:penetration-testing','topic:fuzzing',
+    'topic:network','topic:linux','topic:raspberry-pi','topic:arduino',
+    'topic:machine-learning','topic:data-science','topic:visualization',
+    'topic:compiler','topic:interpreter','topic:editor','topic:shell',
+  ];
+
+  // Shuffle helper
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length-1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i+1));
+      [a[i],a[j]] = [a[j],a[i]];
+    }
+    return a;
+  }
+
+  // Random star threshold: 100–1000
+  function randStars() { return [100,200,300,500,1000][Math.floor(Math.random()*5)]; }
+  // Random sort
+  function randSort() { return ['updated','stars'][Math.floor(Math.random()*2)]; }
+  // Random page (1-3) so same query returns different results
+  function randPage() { return Math.floor(Math.random()*3)+1; }
+
+  // Pick 3 random topics per query
+  const pickedTopics = shuffle(ALL_TOPICS).slice(0,3).join('+');
+  const pickedTopics2 = shuffle(ALL_TOPICS).slice(0,3).join('+');
+  const pickedTopics3 = shuffle(ALL_TOPICS).slice(0,3).join('+');
+
+  // Shuffle langs and pick randomly
+  const shuffledLangs = shuffle(langs);
 
   try {
-    // Search GitHub for fun/interesting projects in user's languages
-    const queries = langs.slice(0,2).map(lang =>
-      `https://api.github.com/search/repositories?q=language:${encodeURIComponent(lang)}+${projectTopics}+stars:>500+is:public&sort=updated&order=desc&per_page=15`
-    );
-    // Also fetch trending security/dev tools regardless of language
-    queries.push(`https://api.github.com/search/repositories?q=topic:security+topic:hacking+stars:>200+is:public&sort=updated&order=desc&per_page=10`);
-    queries.push(`https://api.github.com/search/repositories?q=topic:developer-tools+topic:cli+stars:>300+is:public&sort=updated&order=desc&per_page=10`);
-
     const headers={'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.v3+json'};
+
+    const queries = [
+      // User's top language + random topics
+      `https://api.github.com/search/repositories?q=language:${encodeURIComponent(shuffledLangs[0]||'Python')}+${pickedTopics}+stars:>${randStars()}+is:public&sort=${randSort()}&order=desc&per_page=15&page=${randPage()}`,
+      // Second language if exists
+      shuffledLangs[1]
+        ? `https://api.github.com/search/repositories?q=language:${encodeURIComponent(shuffledLangs[1])}+${pickedTopics2}+stars:>${randStars()}+is:public&sort=${randSort()}&order=desc&per_page=15&page=${randPage()}`
+        : `https://api.github.com/search/repositories?q=${pickedTopics2}+stars:>500+is:public&sort=updated&order=desc&per_page=15&page=${randPage()}`,
+      // Pure random topic set — no language filter
+      `https://api.github.com/search/repositories?q=${pickedTopics3}+stars:>${randStars()}+is:public&sort=${randSort()}&order=desc&per_page=15&page=${randPage()}`,
+    ];
+
     const results = await Promise.all(queries.map(url=>fetch(url,{headers}).then(r=>r.json()).catch(()=>({items:[]}))));
 
-    // Flatten, dedupe, filter out user's own repos and pure libraries
-    const SKIP_KEYWORDS = ['sdk','npm','package','library','lib','boilerplate','template','framework','starter','awesome-list','cheatsheet','course','tutorial','learning'];
+    const SKIP_KEYWORDS = ['sdk','npm','package','library','lib','boilerplate','template','framework','starter','awesome-list','cheatsheet','course','tutorial','learning','docs','documentation'];
     const seen = new Set();
     let all = [];
     results.forEach(r=>{
@@ -1051,10 +1086,13 @@ async function loadSuggestions(){
       });
     });
 
-    // Sort by recency + stars combined, pick top 6
+    // Shuffle the pool first so same-scored repos vary between refreshes
+    all = shuffle(all);
+
+    // Score by stars + recency but with some randomness
     all.sort((a,b)=>{
-      const scoreA = a.stargazers_count * 0.3 + (new Date(a.pushed_at).getTime()/1e11);
-      const scoreB = b.stargazers_count * 0.3 + (new Date(b.pushed_at).getTime()/1e11);
+      const scoreA = a.stargazers_count * 0.2 + (new Date(a.pushed_at).getTime()/1e11) + Math.random()*5;
+      const scoreB = b.stargazers_count * 0.2 + (new Date(b.pushed_at).getTime()/1e11) + Math.random()*5;
       return scoreB - scoreA;
     });
     const picks = all.slice(0,6);
