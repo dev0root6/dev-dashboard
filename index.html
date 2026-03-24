@@ -420,9 +420,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     <!-- Kanban plans section -->
     <div class="card">
       <div class="card-title"><div class="card-title-left"><span class="card-icon"></span>plans</div></div>
-      <div class="plan-form">
-        <input class="plan-input" id="plan-title-input" placeholder="plan title..." />
-
+      <div class="plan-form" style="flex-wrap:wrap">
+        <input class="plan-input" id="plan-title-input" placeholder="plan title..." style="flex:2;min-width:180px" />
         <input class="todo-input" id="plan-due-input" type="date" style="flex:0 0 140px;color:var(--text-muted);background:var(--surface2);border:1px solid var(--border);padding:8px 10px;font-family:var(--font-mono);font-size:11px;outline:none" title="due date (optional)" />
         <select class="todo-select" id="plan-col-input">
           <option value="backlog">backlog</option>
@@ -430,6 +429,15 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
           <option value="done">done</option>
         </select>
         <button class="btn-primary" onclick="addPlan()">[ add ]</button>
+      </div>
+      <div class="md-editor-wrap" style="margin-bottom:14px">
+        <div class="md-tabs">
+          <button class="md-tab active" onclick="switchMdTab('write',this)">write</button>
+          <button class="md-tab" onclick="switchMdTab('preview',this)">preview</button>
+          <span style="margin-left:auto;font-size:10px;color:var(--text-dim);padding:6px 10px">supports markdown</span>
+        </div>
+        <textarea class="md-textarea" id="plan-desc-input" placeholder="description (optional) — supports **bold**, *italic*, ## headings, - lists"></textarea>
+        <div class="md-preview md-content" id="plan-desc-preview"></div>
       </div>
       <div class="kanban-board" id="kanban-board"
         ondragover="event.preventDefault()"
